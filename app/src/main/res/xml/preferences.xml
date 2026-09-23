@@ -354,6 +354,26 @@
             app:iconSpaceReserved="false" />
         <CheckBoxPreference
             android:defaultValue="false"
+            android:key="checkbox_enable_push_to_talk"
+            android:summary="@string/summary_enable_push_to_talk"
+            android:title="@string/title_enable_push_to_talk"
+            app:iconSpaceReserved="false" />
+        <EditTextPreference
+            android:defaultValue="Z"
+            android:dependency="checkbox_enable_push_to_talk"
+            android:key="edit_push_to_talk_host_key"
+            android:summary="@string/summary_push_to_talk_host_key"
+            android:title="@string/title_push_to_talk_host_key"
+            app:iconSpaceReserved="false"
+            app:useSimpleSummaryProvider="true" />
+        <Preference
+            android:dependency="checkbox_enable_push_to_talk"
+            android:key="preference_learn_push_to_talk_button"
+            android:summary="@string/summary_push_to_talk_button_unassigned"
+            android:title="@string/title_push_to_talk_button"
+            app:iconSpaceReserved="false" />
+        <CheckBoxPreference
+            android:defaultValue="false"
             android:dependency="checkbox_enable_rumble"
             android:key="checkbox_vibrate_fallback"
             android:summary="@string/summary_checkbox_vibrate_fallback"
