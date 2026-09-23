@@ -93,8 +93,7 @@ public class MicrophoneCaptureManager {
 
         for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             String label = describeDevice(deviceInfo);
-            int entryId = isBluetoothHeadsetDevice(deviceInfo) ?
-                    DEVICE_ID_BLUETOOTH_HEADSET : deviceInfo.getId();
+            int entryId = deviceInfo.getId();
             if (!uniqueEntries.containsKey(label)) {
                 uniqueEntries.put(label, new InputDeviceEntry(entryId, label));
             }
@@ -175,39 +174,20 @@ public class MicrophoneCaptureManager {
             return false;
         }
 
-        boolean classicBluetoothFallback = false;
         if (preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
             AudioDeviceInfo bluetoothInput = findBluetoothInputDevice();
-
-            if (bluetoothInput != null &&
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    bluetoothInput.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET) {
-                // BLE Audio supports concurrent microphone capture and high-fidelity playback.
-                // Use Android's communication route only for true BLE Audio headsets.
-                if (!activateBluetoothCommunicationRoute()) {
-                    LimeLog.warning("BLE Audio microphone routing could not be activated; capture will still be attempted");
-                }
+            if (bluetoothInput != null) {
+                preferredDeviceId = bluetoothInput.getId();
+                LimeLog.info("Migrated legacy Bluetooth microphone selection to direct device ID " +
+                        preferredDeviceId);
             }
             else {
-                // Classic Bluetooth microphones use SCO/HFP. Activating that route forces the
-                // whole headset into phone-call audio quality. Artemis' normal playback path
-                // never does this, which is why the original app sounds clean.
-                //
-                // Keep the headset on A2DP for high-quality game audio and use the tablet's
-                // built-in microphone instead. This preserves PTT and microphone forwarding
-                // without destroying stream audio quality.
-                AudioDeviceInfo builtInMic = findBuiltInInputDevice();
-                preferredDeviceId = builtInMic != null ? builtInMic.getId() : 0;
-                classicBluetoothFallback = true;
-                LimeLog.info("Classic Bluetooth mic requested; using built-in mic to preserve high-quality A2DP playback");
+                dispatchStatus(string(R.string.microphone_preview_selected_missing), 0.0, false);
+                return false;
             }
         }
 
         config = createCaptureConfig(preferredDeviceId);
-        if (config != null && classicBluetoothFallback) {
-            config.deviceLabel = "Built-in microphone (high-quality Bluetooth playback)";
-            config.statusMessage = "Using built-in microphone to keep Bluetooth game audio in high quality";
-        }
         if (config == null) {
             dispatchStatus(string(R.string.microphone_preview_open_failed), 0.0, false);
             return false;
@@ -248,6 +228,12 @@ public class MicrophoneCaptureManager {
                 config.sourceName,
                 config.deviceLabel,
                 bufferSamples));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            AudioDeviceInfo routedDevice = newRecord.getRoutedDevice();
+            LimeLog.info("Microphone routed input: " +
+                    (routedDevice != null ? describeDevice(routedDevice) + " (#" + routedDevice.getId() + ")" : "unknown"));
+        }
 
         audioRecord = newRecord;
         streamingToHost = streamToHost;
@@ -318,19 +304,6 @@ public class MicrophoneCaptureManager {
     }
 
     private CaptureConfig createCaptureConfig(int preferredDeviceId) {
-        boolean bluetoothRequested = preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET;
-        int[] preferredSources = bluetoothRequested ?
-                new int[] {
-                        MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                        MediaRecorder.AudioSource.MIC,
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1
-                } :
-                new int[] {
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1,
-                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                        MediaRecorder.AudioSource.MIC
-                };
         int minBufferSizeBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT);
@@ -344,13 +317,7 @@ public class MicrophoneCaptureManager {
         String preferredDeviceLabel = string(R.string.microphone_device_default);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && preferredDeviceId != 0) {
-            if (bluetoothRequested) {
-                preferredDevice = waitForBluetoothInputDevice();
-            }
-            else {
-                preferredDevice = findInputDevice(preferredDeviceId);
-            }
-
+            preferredDevice = findInputDevice(preferredDeviceId);
             if (preferredDevice != null) {
                 preferredDeviceLabel = describeDevice(preferredDevice);
             }
@@ -358,6 +325,19 @@ public class MicrophoneCaptureManager {
                 missingSelectedDevice = true;
             }
         }
+
+        boolean directBluetooth = preferredDevice != null && isBluetoothHeadsetDevice(preferredDevice);
+        int[] preferredSources = directBluetooth ?
+                new int[] {
+                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                        MediaRecorder.AudioSource.MIC,
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1
+                } :
+                new int[] {
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1,
+                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                        MediaRecorder.AudioSource.MIC
+                };
 
         for (int source : preferredSources) {
             AudioRecord candidate;
@@ -375,6 +355,8 @@ public class MicrophoneCaptureManager {
                 boolean preferredApplied = candidate.setPreferredDevice(preferredDevice);
                 if (!preferredApplied) {
                     LimeLog.info("Preferred microphone device selection was rejected by AudioRecord");
+                    candidate.release();
+                    continue;
                 }
             }
 
@@ -631,7 +613,7 @@ public class MicrophoneCaptureManager {
             case AudioDeviceInfo.TYPE_BUILTIN_MIC:
                 return "Built-in microphone";
             case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
-                return "Bluetooth headset microphone (classic / call quality)";
+                return "Bluetooth headset microphone (direct)";
             case AudioDeviceInfo.TYPE_BLE_HEADSET:
                 return "Bluetooth LE Audio headset microphone";
             case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
