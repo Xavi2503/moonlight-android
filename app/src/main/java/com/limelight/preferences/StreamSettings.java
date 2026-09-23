@@ -1030,22 +1030,39 @@ public class StreamSettings extends AppCompatActivity {
 
             int keyCode = getPrefs().getInt(
                     PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, 0);
-            if (keyCode == 0) {
+            int scanCode = getPrefs().getInt(
+                    PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING, 0);
+            if (keyCode == 0 && scanCode == 0) {
                 pushToTalkButtonPreference.setSummary(R.string.summary_push_to_talk_button_unassigned);
             }
             else {
                 pushToTalkButtonPreference.setSummary(
                         getString(R.string.summary_push_to_talk_button_assigned,
-                                describePushToTalkButton(keyCode)));
+                                describePushToTalkButton(keyCode, scanCode)));
             }
         }
 
-        private String describePushToTalkButton(int keyCode) {
-            String name = KeyEvent.keyCodeToString(keyCode);
-            if (name.startsWith("KEYCODE_")) {
-                name = name.substring("KEYCODE_".length());
+        private String describePushToTalkButton(int keyCode, int scanCode) {
+            if (keyCode != 0 && keyCode != KeyEvent.KEYCODE_UNKNOWN) {
+                String name = KeyEvent.keyCodeToString(keyCode);
+                if (name.startsWith("KEYCODE_")) {
+                    name = name.substring("KEYCODE_".length());
+                }
+                return name;
             }
-            return name;
+
+            switch (scanCode) {
+                case 0x2c4:
+                    return "PADDLE 1";
+                case 0x2c5:
+                    return "PADDLE 2";
+                case 0x2c6:
+                    return "PADDLE 3";
+                case 0x2c7:
+                    return "PADDLE 4";
+                default:
+                    return String.format(Locale.US, "SCAN 0x%X", scanCode);
+            }
         }
 
         boolean capturePushToTalkButton(KeyEvent event) {
@@ -1066,18 +1083,21 @@ public class StreamSettings extends AppCompatActivity {
             }
 
             int keyCode = event.getKeyCode();
-            if (keyCode == KeyEvent.KEYCODE_UNKNOWN) {
+            int scanCode = event.getScanCode();
+            if ((keyCode == 0 || keyCode == KeyEvent.KEYCODE_UNKNOWN) && scanCode == 0) {
                 return true;
             }
 
             getPrefs().edit()
                     .putInt(PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, keyCode)
+                    .putInt(PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING, scanCode)
                     .apply();
 
             waitingForPushToTalkButton = false;
             updatePushToTalkButtonSummary();
             Toast.makeText(requireContext(),
-                    getString(R.string.push_to_talk_button_saved, describePushToTalkButton(keyCode)),
+                    getString(R.string.push_to_talk_button_saved,
+                            describePushToTalkButton(keyCode, scanCode)),
                     Toast.LENGTH_SHORT).show();
             return true;
         }
