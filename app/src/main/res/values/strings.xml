@@ -270,6 +270,16 @@
     <string name="summary_checkbox_force_device_motion">Enforce using devices\'s built-in motion sensor even when the controller reported motion sensors are supported.</string>
     <string name="title_enable_rumble">Enable Rumble</string>
     <string name="summary_enable_rumble">Enable rumble feedback on supported gamepads.</string>
+    <string name="title_enable_push_to_talk">Controller push-to-talk</string>
+    <string name="summary_enable_push_to_talk">Convert one controller button into a keyboard push-to-talk key while streaming</string>
+    <string name="title_push_to_talk_host_key">Push-to-talk key on PC</string>
+    <string name="summary_push_to_talk_host_key">Keyboard key sent to the PC while the assigned controller button is held</string>
+    <string name="title_push_to_talk_button">Push-to-talk controller button</string>
+    <string name="summary_push_to_talk_button_unassigned">Not assigned. Tap here, then press M1, M2, or another controller button.</string>
+    <string name="summary_push_to_talk_button_assigned">Assigned: %1$s</string>
+    <string name="push_to_talk_learn_prompt">Press the controller button you want to use for push-to-talk</string>
+    <string name="push_to_talk_invalid_key">Enter one keyboard key (A-Z or 0-9)</string>
+    <string name="push_to_talk_button_saved">Push-to-talk button saved: %1$s</string>
     <string name="category_input_settings">Input Settings</string>
     <string name="title_checkbox_touchscreen_trackpad">Use the touchscreen as a trackpad</string>
     <string name="summary_checkbox_touchscreen_trackpad">If enabled, the touchscreen acts like a trackpad. If disabled, the touchscreen directly controls the mouse cursor.</string>
@@ -465,7 +475,7 @@
     <string name="title_checkbox_mouse_local_cursor">Use local mouse cursor</string>
     <string name="summary_checkbox_mouse_local_cursor">Default external physical mouse cursor will be captured, this option can display Android system cursor</string>
     <string name="title_checkbox_multi_touch_gestures">Enable multi-touch gestures</string>
-    <string name="summary_checkbox_multi_touch_gestures">Enable 3 finger tap for keyboard, 4 finger tap for full keyboard, 5 finger tap for quick menu when using multi-touch mode.</string>
+    <string name="summary_checkbox_multi_touch_gestures">Enable 3 or 4 finger tap for the Android keyboard and 5 finger tap for the quick menu.</string>
     <string name="title_checkbox_onscreen_style_official">Official Virtual Gamepad Skin</string>
     <string name="summary_checkbox_onscreen_style_official">If you still like the old style of official virtual gamepad buttons, you can select this option.\nButton shapes can be square if you selected the bottom virtual button [Normal buttons are square buttons]</string>
     <string name="title_checkbox_enable_perf_overlay_lite">Enable Lite mode</string>
