@@ -100,6 +100,7 @@ public class PreferenceConfiguration {
     private static final String ENABLE_RUMBLE_PREF_STRING = "checkbox_enable_rumble";
     public static final String ENABLE_PUSH_TO_TALK_PREF_STRING = "checkbox_enable_push_to_talk";
     public static final String PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING = "push_to_talk_controller_keycode";
+    public static final String PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING = "push_to_talk_controller_scancode";
     public static final String PUSH_TO_TALK_HOST_KEY_PREF_STRING = "edit_push_to_talk_host_key";
     private static final String PREVENT_PACKET_LOSS_PREF_STRING = "checkbox_prevent_packet_loss";
 
@@ -198,6 +199,7 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_ENABLE_RUMBLE = true;
     private static final boolean DEFAULT_ENABLE_PUSH_TO_TALK = false;
     private static final int DEFAULT_PUSH_TO_TALK_CONTROLLER_KEYCODE = 0;
+    private static final int DEFAULT_PUSH_TO_TALK_CONTROLLER_SCANCODE = 0;
     private static final String DEFAULT_PUSH_TO_TALK_HOST_KEY = "Z";
     private static final boolean DEFAULT_PREVENT_PACKET_LOSS = false;
     private static final boolean DEFAULT_GAMEPAD_ENABLE_BATTERY_REPORT = true;
@@ -264,6 +266,7 @@ public class PreferenceConfiguration {
     public boolean enableBatteryReport;
     public boolean enablePushToTalk;
     public int pushToTalkControllerKeyCode;
+    public int pushToTalkControllerScanCode;
     public String pushToTalkHostKey;
     public boolean forceQwerty;
     public boolean backAsMeta;
@@ -1046,6 +1049,7 @@ private static int getFramePacingValue(Context context) {
         config.enableRumble = prefs.getBoolean(ENABLE_RUMBLE_PREF_STRING, DEFAULT_ENABLE_RUMBLE);
         config.enablePushToTalk = prefs.getBoolean(ENABLE_PUSH_TO_TALK_PREF_STRING, DEFAULT_ENABLE_PUSH_TO_TALK);
         config.pushToTalkControllerKeyCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, DEFAULT_PUSH_TO_TALK_CONTROLLER_KEYCODE);
+        config.pushToTalkControllerScanCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING, DEFAULT_PUSH_TO_TALK_CONTROLLER_SCANCODE);
         config.pushToTalkHostKey = prefs.getString(PUSH_TO_TALK_HOST_KEY_PREF_STRING, DEFAULT_PUSH_TO_TALK_HOST_KEY);
         config.preventPacketLoss = prefs.getBoolean(PREVENT_PACKET_LOSS_PREF_STRING, DEFAULT_PREVENT_PACKET_LOSS);
 
