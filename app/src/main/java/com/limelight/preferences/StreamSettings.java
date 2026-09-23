@@ -37,6 +37,8 @@ import android.util.Log;
 import android.util.Range;
 import android.view.Display;
 import android.view.DisplayCutout;
+import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -65,6 +67,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Map;
 
 public class StreamSettings extends AppCompatActivity {
@@ -123,6 +126,14 @@ public class StreamSettings extends AppCompatActivity {
     }
 
     @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (prefsFragment != null && prefsFragment.capturePushToTalkButton(event)) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
 
@@ -177,6 +188,10 @@ public class StreamSettings extends AppCompatActivity {
         private ListPreference microphoneDevicePreference;
         private MicrophonePreviewPreference microphonePreviewPreference;
         private boolean pendingMicrophoneEnableAfterPermission;
+
+        private EditTextPreference pushToTalkHostKeyPreference;
+        private Preference pushToTalkButtonPreference;
+        private boolean waitingForPushToTalkButton;
 
         public SettingsFragment(PreferenceConfiguration prefCfg) {
             prevPrefConfig = prefCfg;
@@ -407,6 +422,7 @@ public class StreamSettings extends AppCompatActivity {
             }
 
             initializeMicrophonePreferences(screen);
+            initializePushToTalkPreferences();
 
             // Fire TV apps are not allowed to use WebViews or browsers, so hide the Help category
             /*if (getActivity().getPackageManager().hasSystemFeature("amazon.hardware.fire_tv")) {
@@ -969,6 +985,101 @@ public class StreamSettings extends AppCompatActivity {
                     }
                 });
             }
+        }
+
+        private void initializePushToTalkPreferences() {
+            pushToTalkHostKeyPreference = findPreference(PreferenceConfiguration.PUSH_TO_TALK_HOST_KEY_PREF_STRING);
+            pushToTalkButtonPreference = findPreference("preference_learn_push_to_talk_button");
+
+            if (pushToTalkHostKeyPreference != null) {
+                pushToTalkHostKeyPreference.setOnBindEditTextListener(editText -> {
+                    editText.setSingleLine(true);
+                    editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+                    editText.setFilters(new InputFilter[] { new InputFilter.LengthFilter(1) });
+                    editText.selectAll();
+                });
+
+                pushToTalkHostKeyPreference.setOnPreferenceChangeListener((preference, newValue) -> {
+                    String value = String.valueOf(newValue).trim().toUpperCase(Locale.US);
+                    if (value.length() != 1 || !Character.isLetterOrDigit(value.charAt(0))) {
+                        Toast.makeText(requireContext(), R.string.push_to_talk_invalid_key, Toast.LENGTH_SHORT).show();
+                        return false;
+                    }
+
+                    pushToTalkHostKeyPreference.setText(value);
+                    return false;
+                });
+            }
+
+            if (pushToTalkButtonPreference != null) {
+                updatePushToTalkButtonSummary();
+
+                pushToTalkButtonPreference.setOnPreferenceClickListener(preference -> {
+                    waitingForPushToTalkButton = true;
+                    pushToTalkButtonPreference.setSummary(R.string.push_to_talk_learn_prompt);
+                    Toast.makeText(requireContext(), R.string.push_to_talk_learn_prompt, Toast.LENGTH_LONG).show();
+                    return true;
+                });
+            }
+        }
+
+        private void updatePushToTalkButtonSummary() {
+            if (pushToTalkButtonPreference == null) {
+                return;
+            }
+
+            int keyCode = getPrefs().getInt(
+                    PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, 0);
+            if (keyCode == 0) {
+                pushToTalkButtonPreference.setSummary(R.string.summary_push_to_talk_button_unassigned);
+            }
+            else {
+                pushToTalkButtonPreference.setSummary(
+                        getString(R.string.summary_push_to_talk_button_assigned,
+                                describePushToTalkButton(keyCode)));
+            }
+        }
+
+        private String describePushToTalkButton(int keyCode) {
+            String name = KeyEvent.keyCodeToString(keyCode);
+            if (name.startsWith("KEYCODE_")) {
+                name = name.substring("KEYCODE_".length());
+            }
+            return name;
+        }
+
+        boolean capturePushToTalkButton(KeyEvent event) {
+            if (!waitingForPushToTalkButton) {
+                return false;
+            }
+
+            int source = event.getSource();
+            boolean controllerSource =
+                    (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                    (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+            if (!controllerSource) {
+                return false;
+            }
+
+            if (event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0) {
+                return true;
+            }
+
+            int keyCode = event.getKeyCode();
+            if (keyCode == KeyEvent.KEYCODE_UNKNOWN) {
+                return true;
+            }
+
+            getPrefs().edit()
+                    .putInt(PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, keyCode)
+                    .apply();
+
+            waitingForPushToTalkButton = false;
+            updatePushToTalkButtonSummary();
+            Toast.makeText(requireContext(),
+                    getString(R.string.push_to_talk_button_saved, describePushToTalkButton(keyCode)),
+                    Toast.LENGTH_SHORT).show();
+            return true;
         }
 
         private void initializeMicrophonePreferences(PreferenceScreen screen) {
