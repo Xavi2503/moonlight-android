@@ -2958,6 +2958,31 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         sendControllerInputPacket(defaultContext);
     }
 
+    private int getPushToTalkControllerFlag() {
+        if (!prefConfig.enablePushToTalk) {
+            return 0;
+        }
+
+        Integer mappedFlag = ANDROID_TO_LI_BUTTON_MAP.get(prefConfig.pushToTalkControllerKeyCode);
+        if (mappedFlag != null) {
+            return mappedFlag;
+        }
+
+        // Extra paddles often arrive as raw evdev scan codes rather than Android key codes.
+        switch (prefConfig.pushToTalkControllerScanCode) {
+            case 0x2c4:
+                return ControllerPacket.PADDLE1_FLAG;
+            case 0x2c5:
+                return ControllerPacket.PADDLE2_FLAG;
+            case 0x2c6:
+                return ControllerPacket.PADDLE3_FLAG;
+            case 0x2c7:
+                return ControllerPacket.PADDLE4_FLAG;
+            default:
+                return 0;
+        }
+    }
+
     @Override
     public void reportControllerState(int controllerId, int buttonFlags,
                                       float leftStickX, float leftStickY,
@@ -2991,6 +3016,19 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         context.leftTrigger = (byte)(leftTrigger * 0xFF);
         context.rightTrigger = (byte)(rightTrigger * 0xFF);
+
+        // When the built-in USB/XInput driver owns the controller, Android KeyEvents are bypassed.
+        // Convert the assigned gamepad button to push-to-talk here and remove it from the controller
+        // packet so the game doesn't also see the remapped source button.
+        int pushToTalkFlag = getPushToTalkControllerFlag();
+        if (pushToTalkFlag != 0) {
+            final boolean pushToTalkPressed = (buttonFlags & pushToTalkFlag) != 0;
+            if (pushToTalkPressed != context.pushToTalkPressed) {
+                context.pushToTalkPressed = pushToTalkPressed;
+                mainThreadHandler.post(() -> gestures.setPushToTalkPressed(pushToTalkPressed));
+            }
+            buttonFlags &= ~pushToTalkFlag;
+        }
 
         final int quitCombo = ControllerPacket.BACK_FLAG | ControllerPacket.PLAY_FLAG |
                 ControllerPacket.LB_FLAG | ControllerPacket.RB_FLAG;
@@ -3067,6 +3105,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         public int inputMap = 0;
         public boolean pendingExit;
+        public boolean pushToTalkPressed;
         public byte leftTrigger = 0x00;
         public byte rightTrigger = 0x00;
         public short rightStickX = 0x0000;
@@ -3132,6 +3171,10 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public void destroy() {
             mouseEmulationActive = false;
             mainThreadHandler.removeCallbacks(mouseEmulationRunnable);
+            if (pushToTalkPressed) {
+                pushToTalkPressed = false;
+                mainThreadHandler.post(() -> gestures.setPushToTalkPressed(false));
+            }
         }
 
         public void sendControllerArrival() {}
