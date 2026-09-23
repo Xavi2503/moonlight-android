@@ -33,22 +33,18 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x gradlew
 
-      - name: Build ARM64 debug APK
-        run: ./gradlew assembleNonRoot_gameDebug -Pandroid.injected.build.abi=arm64-v8a --stacktrace
+      - name: Build debug APKs
+        run: ./gradlew assembleNonRoot_gameDebug --stacktrace
 
-      - name: Collect ARM64 APK
+      - name: Collect and validate ARM64 APK
         shell: bash
         run: |
           mkdir -p artifact
-          echo "APK files produced by Gradle:"
-          find . -type f -name '*.apk' -print
-          APK_PATH="$(find . -type f -name '*arm64-v8a*.apk' | head -n 1)"
-          if [ -z "$APK_PATH" ]; then
-            APK_PATH="$(find . -type f -name '*.apk' | head -n 1)"
-          fi
-          test -n "$APK_PATH"
+          APK_PATH="app/build/outputs/apk/nonRoot_game/debug/app-nonRoot_game-arm64-v8a-debug.apk"
+          test -f "$APK_PATH"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK_PATH"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK_PATH"
           cp "$APK_PATH" artifact/Artemis-Mic-BT-arm64-v8a-debug.apk
-          test -f artifact/Artemis-Mic-BT-arm64-v8a-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
