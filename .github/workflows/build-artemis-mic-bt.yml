@@ -33,6 +33,12 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x gradlew
 
+      - name: Restore stable debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: artemis-mic-bt-debug-keystore-v1
+
       - name: Build debug APKs
         run: ./gradlew assembleNonRoot_gameDebug --stacktrace
 
