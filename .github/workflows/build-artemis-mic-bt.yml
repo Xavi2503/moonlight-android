@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - javi/artemis-mic-bt
+      - artemis-mic-bt
 
 jobs:
   build:
