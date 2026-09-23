@@ -175,13 +175,39 @@ public class MicrophoneCaptureManager {
             return false;
         }
 
+        boolean classicBluetoothFallback = false;
         if (preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
-            if (!activateBluetoothCommunicationRoute()) {
-                LimeLog.warning("Bluetooth communication routing could not be activated; capture will still be attempted");
+            AudioDeviceInfo bluetoothInput = findBluetoothInputDevice();
+
+            if (bluetoothInput != null &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    bluetoothInput.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET) {
+                // BLE Audio supports concurrent microphone capture and high-fidelity playback.
+                // Use Android's communication route only for true BLE Audio headsets.
+                if (!activateBluetoothCommunicationRoute()) {
+                    LimeLog.warning("BLE Audio microphone routing could not be activated; capture will still be attempted");
+                }
+            }
+            else {
+                // Classic Bluetooth microphones use SCO/HFP. Activating that route forces the
+                // whole headset into phone-call audio quality. Artemis' normal playback path
+                // never does this, which is why the original app sounds clean.
+                //
+                // Keep the headset on A2DP for high-quality game audio and use the tablet's
+                // built-in microphone instead. This preserves PTT and microphone forwarding
+                // without destroying stream audio quality.
+                AudioDeviceInfo builtInMic = findBuiltInInputDevice();
+                preferredDeviceId = builtInMic != null ? builtInMic.getId() : 0;
+                classicBluetoothFallback = true;
+                LimeLog.info("Classic Bluetooth mic requested; using built-in mic to preserve high-quality A2DP playback");
             }
         }
 
         config = createCaptureConfig(preferredDeviceId);
+        if (config != null && classicBluetoothFallback) {
+            config.deviceLabel = "Built-in microphone (high-quality Bluetooth playback)";
+            config.statusMessage = "Using built-in microphone to keep Bluetooth game audio in high quality";
+        }
         if (config == null) {
             dispatchStatus(string(R.string.microphone_preview_open_failed), 0.0, false);
             return false;
@@ -483,6 +509,25 @@ public class MicrophoneCaptureManager {
         return null;
     }
 
+    private AudioDeviceInfo findBuiltInInputDevice() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return null;
+        }
+
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) {
+            return null;
+        }
+
+        for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+            if (deviceInfo.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+                return deviceInfo;
+            }
+        }
+
+        return null;
+    }
+
     private AudioDeviceInfo findBluetoothInputDevice() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return null;
@@ -586,8 +631,9 @@ public class MicrophoneCaptureManager {
             case AudioDeviceInfo.TYPE_BUILTIN_MIC:
                 return "Built-in microphone";
             case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                return "Bluetooth headset microphone (classic / call quality)";
             case AudioDeviceInfo.TYPE_BLE_HEADSET:
-                return "Bluetooth headset microphone";
+                return "Bluetooth LE Audio headset microphone";
             case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
                 return "Bluetooth audio input";
             case AudioDeviceInfo.TYPE_WIRED_HEADSET:
