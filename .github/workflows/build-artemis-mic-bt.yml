@@ -67,7 +67,8 @@ jobs:
           mkdir -p artifact
           APK_PATH="app/build/outputs/apk/nonRoot_game/debug/app-nonRoot_game-arm64-v8a-debug.apk"
           test -f "$APK_PATH"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK_PATH"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK_PATH"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK_PATH" | head -n 1
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK_PATH"
           cp "$APK_PATH" artifact/Artemis-Mic-BT-arm64-v8a-debug.apk
 
