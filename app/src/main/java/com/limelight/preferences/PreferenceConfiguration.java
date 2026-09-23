@@ -98,6 +98,9 @@ public class PreferenceConfiguration {
     private static final String FULL_SCREEN_PREF_STRING = "checkbox_full_screen";
 
     private static final String ENABLE_RUMBLE_PREF_STRING = "checkbox_enable_rumble";
+    public static final String ENABLE_PUSH_TO_TALK_PREF_STRING = "checkbox_enable_push_to_talk";
+    public static final String PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING = "push_to_talk_controller_keycode";
+    public static final String PUSH_TO_TALK_HOST_KEY_PREF_STRING = "edit_push_to_talk_host_key";
     private static final String PREVENT_PACKET_LOSS_PREF_STRING = "checkbox_prevent_packet_loss";
 
     private static final String LIST_ONSCREEN_KEYBOARD_ALIGN_MODE = "list_onscreen_keyboard_align_mode";
@@ -193,6 +196,9 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_GAMEPAD_MOTION_FALLBACK = false;
     private static final boolean DEFAULT_FORCE_MOTION_SENSORS_FALLBACK = false;
     private static final boolean DEFAULT_ENABLE_RUMBLE = true;
+    private static final boolean DEFAULT_ENABLE_PUSH_TO_TALK = false;
+    private static final int DEFAULT_PUSH_TO_TALK_CONTROLLER_KEYCODE = 0;
+    private static final String DEFAULT_PUSH_TO_TALK_HOST_KEY = "Z";
     private static final boolean DEFAULT_PREVENT_PACKET_LOSS = false;
     private static final boolean DEFAULT_GAMEPAD_ENABLE_BATTERY_REPORT = true;
     private static final boolean DEFAULT_FORCE_QWERTY = true;
@@ -256,6 +262,9 @@ public class PreferenceConfiguration {
     public boolean onscreenController;
     public boolean hideOSCWhenHasGamepad;
     public boolean enableBatteryReport;
+    public boolean enablePushToTalk;
+    public int pushToTalkControllerKeyCode;
+    public String pushToTalkHostKey;
     public boolean forceQwerty;
     public boolean backAsMeta;
     public boolean ignoreSynthEvents;
@@ -1035,6 +1044,9 @@ private static int getFramePacingValue(Context context) {
         config.gamepadMotionSensorsFallbackToDevice = prefs.getBoolean(GAMEPAD_MOTION_FALLBACK_PREF_STRING, DEFAULT_GAMEPAD_MOTION_FALLBACK);
         config.forceMotionSensorsFallbackToDevice = prefs.getBoolean(FORCE_MOTION_SENSORS_FALLBACK_PREF_STRING, DEFAULT_FORCE_MOTION_SENSORS_FALLBACK);
         config.enableRumble = prefs.getBoolean(ENABLE_RUMBLE_PREF_STRING, DEFAULT_ENABLE_RUMBLE);
+        config.enablePushToTalk = prefs.getBoolean(ENABLE_PUSH_TO_TALK_PREF_STRING, DEFAULT_ENABLE_PUSH_TO_TALK);
+        config.pushToTalkControllerKeyCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, DEFAULT_PUSH_TO_TALK_CONTROLLER_KEYCODE);
+        config.pushToTalkHostKey = prefs.getString(PUSH_TO_TALK_HOST_KEY_PREF_STRING, DEFAULT_PUSH_TO_TALK_HOST_KEY);
         config.preventPacketLoss = prefs.getBoolean(PREVENT_PACKET_LOSS_PREF_STRING, DEFAULT_PREVENT_PACKET_LOSS);
 
         // Read custom values
