@@ -1180,8 +1180,18 @@ public class StreamSettings extends AppCompatActivity {
             labels[0] = getString(R.string.microphone_device_default);
             values[0] = "0";
 
-            String selectedValue = getPrefs().getString(
-                    PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, "0");
+            String selectedValue;
+            if (!getPrefs().contains(PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING)) {
+                selectedValue = Integer.toString(
+                        MicrophoneCaptureManager.getRecommendedInputDeviceId(requireContext()));
+                getPrefs().edit()
+                        .putString(PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, selectedValue)
+                        .apply();
+            }
+            else {
+                selectedValue = getPrefs().getString(
+                        PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, "0");
+            }
             boolean hasSelectedDevice = "0".equals(selectedValue);
 
             for (int i = 0; i < deviceEntries.size(); i++) {
