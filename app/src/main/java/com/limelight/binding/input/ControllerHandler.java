@@ -2992,6 +2992,28 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         context.leftTrigger = (byte)(leftTrigger * 0xFF);
         context.rightTrigger = (byte)(rightTrigger * 0xFF);
 
+        final int quitCombo = ControllerPacket.BACK_FLAG | ControllerPacket.PLAY_FLAG |
+                ControllerPacket.LB_FLAG | ControllerPacket.RB_FLAG;
+
+        // The USB/XInput driver bypasses handleButtonDown(), so the normal Artemis
+        // quit-combo logic never sees these buttons. Intercept the full combo here
+        // before it is sent to the host. This keeps XInput rumble enabled without
+        // leaking the Menu/Start press into Playnite or the streamed game.
+        if (buttonFlags == quitCombo) {
+            context.pendingExit = true;
+            context.inputMap = 0;
+            sendControllerInputPacket(context);
+            mainThreadHandler.post(activityContext::finish);
+            return;
+        }
+
+        // Ignore release reports while the activity is finishing after the quit combo.
+        if (context.pendingExit) {
+            context.inputMap = 0;
+            sendControllerInputPacket(context);
+            return;
+        }
+
         context.inputMap = buttonFlags;
 
         sendControllerInputPacket(context);
@@ -3044,6 +3066,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public short controllerNumber;
 
         public int inputMap = 0;
+        public boolean pendingExit;
         public byte leftTrigger = 0x00;
         public byte rightTrigger = 0x00;
         public short rightStickX = 0x0000;
@@ -3166,7 +3189,6 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public boolean searchIsMode;
         public boolean ignoreBack;
         public boolean hasJoystickAxes;
-        public boolean pendingExit;
         public boolean isDualShockStandaloneTouchpad;
 
         public int emulatingButtonFlags = 0;
