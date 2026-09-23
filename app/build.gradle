@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+def githubRunNumber = System.getenv("GITHUB_RUN_NUMBER")
+
 android {
     ndkVersion "27.0.12077973"
 
@@ -12,7 +14,7 @@ android {
         targetSdk 34
 
         versionName "20.2.6"
-        versionCode = 57
+        versionCode = githubRunNumber != null ? 100000 + githubRunNumber.toInteger() : 100001
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
@@ -56,7 +58,7 @@ android {
                     "obtainium_app_url",
                     "https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.limelight.noir%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FClassicOldSong%2Fmoonlight-android%22%2C%22author%22%3A%22ClassicOldSong%22%2C%22name%22%3A%22Artemis%22%2C%22additionalSettings%22%3A%22%7B%5C%22apkFilterRegEx%5C%22%3A%5C%22nonRoot%5C%22%2C%5C%22matchGroutToUse%5C%22%3A%5C%22%241%5C%22%2C%5C%22versionExtractionRegEx%5C%22%3A%5C%22v(.%2B)%5C%22%7D%22%7D"
 
-            applicationId "com.limelight.micbt"
+            applicationId "com.limelight.micbtstable"
             dimension "root"
             buildConfigField "boolean", "ROOT_BUILD", "false"
         }
@@ -93,12 +95,22 @@ android {
         }
     }
 
+    signingConfigs {
+        artemisDebug {
+            storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
+
     buildTypes {
         debug {
+            signingConfig signingConfigs.artemisDebug
             applicationIdSuffix ".debug"
-            resValue "string", "app_label", "Artemis Mic BT"
-            resValue "string", "app_label_root", "Artemis Mic BT (Root)"
-            resValue "string", "app_label_game", "Artemis Mic BT"
+            resValue "string", "app_label", "Artemis Mic BT Stable"
+            resValue "string", "app_label_root", "Artemis Mic BT Stable (Root)"
+            resValue "string", "app_label_game", "Artemis Mic BT Stable"
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
