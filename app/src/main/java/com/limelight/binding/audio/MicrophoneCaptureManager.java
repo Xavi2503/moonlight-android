@@ -39,6 +39,8 @@ public class MicrophoneCaptureManager {
         }
     }
 
+    public static final int DEVICE_ID_BLUETOOTH_HEADSET = -100;
+
     private static final int SAMPLE_RATE = 48000;
     private static final int CHANNEL_COUNT = 1;
     private static final int FRAME_SIZE = 960;
@@ -62,6 +64,10 @@ public class MicrophoneCaptureManager {
     private String currentStatus;
     private double currentLevel;
     private boolean signalDetected;
+
+    private AudioManager routedAudioManager;
+    private boolean communicationRouteActive;
+    private int previousAudioMode = AudioManager.MODE_NORMAL;
 
     public MicrophoneCaptureManager(Context context) {
         this.context = context.getApplicationContext();
@@ -87,8 +93,10 @@ public class MicrophoneCaptureManager {
 
         for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             String label = describeDevice(deviceInfo);
+            int entryId = isBluetoothHeadsetDevice(deviceInfo) ?
+                    DEVICE_ID_BLUETOOTH_HEADSET : deviceInfo.getId();
             if (!uniqueEntries.containsKey(label)) {
-                uniqueEntries.put(label, new InputDeviceEntry(deviceInfo.getId(), label));
+                uniqueEntries.put(label, new InputDeviceEntry(entryId, label));
             }
         }
 
@@ -142,6 +150,8 @@ public class MicrophoneCaptureManager {
         }
         streamingToHost = false;
 
+        deactivateCommunicationRoute();
+
         currentLevel = 0.0;
         signalDetected = false;
         dispatchStatus(string(R.string.microphone_preview_inactive), 0.0, false);
@@ -163,6 +173,12 @@ public class MicrophoneCaptureManager {
         if (streamToHost && !MoonBridge.isMicrophoneStreamActive()) {
             dispatchStatus(string(R.string.microphone_host_not_negotiated), 0.0, false);
             return false;
+        }
+
+        if (preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
+            if (!activateBluetoothCommunicationRoute()) {
+                LimeLog.warning("Bluetooth communication routing could not be activated; capture will still be attempted");
+            }
         }
 
         config = createCaptureConfig(preferredDeviceId);
@@ -276,11 +292,19 @@ public class MicrophoneCaptureManager {
     }
 
     private CaptureConfig createCaptureConfig(int preferredDeviceId) {
-        int[] preferredSources = new int[] {
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1,
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                MediaRecorder.AudioSource.MIC
-        };
+        boolean bluetoothRequested = preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET;
+        int[] preferredSources = bluetoothRequested ?
+                new int[] {
+                        MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                        MediaRecorder.AudioSource.MIC,
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1
+                } :
+                new int[] {
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1,
+                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                        MediaRecorder.AudioSource.MIC
+                };
         int minBufferSizeBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT);
@@ -294,7 +318,13 @@ public class MicrophoneCaptureManager {
         String preferredDeviceLabel = string(R.string.microphone_device_default);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && preferredDeviceId != 0) {
-            preferredDevice = findInputDevice(preferredDeviceId);
+            if (bluetoothRequested) {
+                preferredDevice = waitForBluetoothInputDevice();
+            }
+            else {
+                preferredDevice = findInputDevice(preferredDeviceId);
+            }
+
             if (preferredDevice != null) {
                 preferredDeviceLabel = describeDevice(preferredDevice);
             }
@@ -363,6 +393,115 @@ public class MicrophoneCaptureManager {
                 bufferSizeBytes);
     }
 
+    private boolean activateBluetoothCommunicationRoute() {
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) {
+            return false;
+        }
+
+        routedAudioManager = audioManager;
+        previousAudioMode = audioManager.getMode();
+
+        try {
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                AudioDeviceInfo communicationDevice = null;
+                for (AudioDeviceInfo deviceInfo : audioManager.getAvailableCommunicationDevices()) {
+                    if (isBluetoothHeadsetDevice(deviceInfo)) {
+                        communicationDevice = deviceInfo;
+                        break;
+                    }
+                }
+
+                if (communicationDevice == null || !audioManager.setCommunicationDevice(communicationDevice)) {
+                    audioManager.setMode(previousAudioMode);
+                    routedAudioManager = null;
+                    return false;
+                }
+            }
+            else {
+                audioManager.startBluetoothSco();
+                audioManager.setBluetoothScoOn(true);
+            }
+
+            communicationRouteActive = true;
+            return true;
+        }
+        catch (SecurityException | IllegalStateException e) {
+            LimeLog.warning("Unable to activate Bluetooth communication route: " + e.getMessage());
+            try {
+                audioManager.setMode(previousAudioMode);
+            }
+            catch (RuntimeException ignored) {
+            }
+            routedAudioManager = null;
+            communicationRouteActive = false;
+            return false;
+        }
+    }
+
+    private void deactivateCommunicationRoute() {
+        if (!communicationRouteActive || routedAudioManager == null) {
+            return;
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                routedAudioManager.clearCommunicationDevice();
+            }
+            else {
+                routedAudioManager.setBluetoothScoOn(false);
+                routedAudioManager.stopBluetoothSco();
+            }
+        }
+        catch (SecurityException | IllegalStateException e) {
+            LimeLog.warning("Unable to clear Bluetooth communication route: " + e.getMessage());
+        }
+
+        try {
+            routedAudioManager.setMode(previousAudioMode);
+        }
+        catch (RuntimeException e) {
+            LimeLog.warning("Unable to restore previous audio mode: " + e.getMessage());
+        }
+
+        communicationRouteActive = false;
+        routedAudioManager = null;
+    }
+
+    private AudioDeviceInfo waitForBluetoothInputDevice() {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            AudioDeviceInfo deviceInfo = findBluetoothInputDevice();
+            if (deviceInfo != null) {
+                return deviceInfo;
+            }
+
+            SystemClock.sleep(100);
+        }
+
+        return null;
+    }
+
+    private AudioDeviceInfo findBluetoothInputDevice() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return null;
+        }
+
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) {
+            return null;
+        }
+
+        for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+            if (isBluetoothHeadsetDevice(deviceInfo)) {
+                return deviceInfo;
+            }
+        }
+
+        return null;
+    }
+
     private AudioDeviceInfo findInputDevice(int deviceId) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return null;
@@ -422,6 +561,9 @@ public class MicrophoneCaptureManager {
     }
 
     private static String audioSourceToString(int audioSource) {
+        if (audioSource == MediaRecorder.AudioSource.VOICE_COMMUNICATION) {
+            return "VOICE_COMMUNICATION";
+        }
         if (audioSource == MediaRecorder.AudioSource.VOICE_RECOGNITION) {
             return "VOICE_RECOGNITION";
         }
@@ -432,11 +574,19 @@ public class MicrophoneCaptureManager {
         return "MIC";
     }
 
+    private static boolean isBluetoothHeadsetDevice(AudioDeviceInfo deviceInfo) {
+        int type = deviceInfo.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                        type == AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+
     private static String describeDevice(AudioDeviceInfo deviceInfo) {
         switch (deviceInfo.getType()) {
             case AudioDeviceInfo.TYPE_BUILTIN_MIC:
                 return "Built-in microphone";
             case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+            case AudioDeviceInfo.TYPE_BLE_HEADSET:
                 return "Bluetooth headset microphone";
             case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
                 return "Bluetooth audio input";
