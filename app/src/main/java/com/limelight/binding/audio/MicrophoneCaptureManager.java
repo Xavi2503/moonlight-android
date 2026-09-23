@@ -79,15 +79,6 @@ public class MicrophoneCaptureManager {
                 PackageManager.PERMISSION_GRANTED;
     }
 
-    public static int getRecommendedInputDeviceId(Context context) {
-        for (InputDeviceEntry entry : getAvailableInputDevices(context)) {
-            if (entry.id == DEVICE_ID_BLUETOOTH_HEADSET) {
-                return DEVICE_ID_BLUETOOTH_HEADSET;
-            }
-        }
-        return 0;
-    }
-
     public static List<InputDeviceEntry> getAvailableInputDevices(Context context) {
         Map<String, InputDeviceEntry> uniqueEntries = new LinkedHashMap<>();
 
@@ -320,11 +311,8 @@ public class MicrophoneCaptureManager {
         if (minBufferSizeBytes <= 0) {
             minBufferSizeBytes = FRAME_SIZE * 4 * 2;
         }
-        // Keep a generous AudioRecord driver buffer for stability, but consume it in
-        // one Opus frame (20 ms) at a time. Previously the capture thread read the
-        // entire ~80 ms driver buffer in one blocking call, adding avoidable latency.
         int bufferSizeBytes = Math.max(minBufferSizeBytes, FRAME_SIZE * 4 * 2);
-        int bufferSamples = FRAME_SIZE;
+        int bufferSamples = Math.max(FRAME_SIZE, bufferSizeBytes / 2);
         boolean missingSelectedDevice = false;
         AudioDeviceInfo preferredDevice = null;
         String preferredDeviceLabel = string(R.string.microphone_device_default);
