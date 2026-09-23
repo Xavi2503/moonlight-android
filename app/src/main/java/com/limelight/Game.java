@@ -163,9 +163,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private static final int STYLUS_UP_DEAD_ZONE_DELAY = 150;
     private static final int STYLUS_UP_DEAD_ZONE_RADIUS = 50;
 
-    private static final int THREE_FINGER_TAP_THRESHOLD = 300;
-    private static final int FOUR_FINGER_TAP_THRESHOLD = 300;
-    private static final int FIVE_FINGER_TAP_THRESHOLD = 300;
+    private static final int THREE_FINGER_TAP_THRESHOLD = 650;
+    private static final int FOUR_FINGER_TAP_THRESHOLD = 650;
+    private static final int FIVE_FINGER_TAP_THRESHOLD = 650;
 
     private Handler timerHandler;
 
@@ -234,6 +234,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private MediaCodecDecoderRenderer decoderRenderer;
     private boolean reportedCrash;
     private MicrophoneCaptureManager microphoneCaptureManager;
+    private boolean pushToTalkActive;
 
     private WifiManager.WifiLock highPerfWifiLock;
     private WifiManager.WifiLock lowLatencyWifiLock;
@@ -2025,6 +2026,57 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         return (byte) modifierFlags;
     }
 
+    private boolean matchesPushToTalkButton(KeyEvent event) {
+        if (prefConfig == null || !prefConfig.enablePushToTalk) {
+            return false;
+        }
+
+        if (prefConfig.pushToTalkControllerKeyCode != 0 &&
+                prefConfig.pushToTalkControllerKeyCode != KeyEvent.KEYCODE_UNKNOWN &&
+                event.getKeyCode() == prefConfig.pushToTalkControllerKeyCode) {
+            return true;
+        }
+
+        return prefConfig.pushToTalkControllerScanCode != 0 &&
+                event.getScanCode() == prefConfig.pushToTalkControllerScanCode;
+    }
+
+    private int getPushToTalkHostAndroidKeyCode() {
+        String configured = prefConfig != null ? prefConfig.pushToTalkHostKey : null;
+        if (configured == null || configured.trim().length() != 1) {
+            return KeyEvent.KEYCODE_Z;
+        }
+
+        String value = configured.trim().toUpperCase(Locale.US);
+        int keyCode = KeyEvent.keyCodeFromString("KEYCODE_" + value);
+        return keyCode != KeyEvent.KEYCODE_UNKNOWN ? keyCode : KeyEvent.KEYCODE_Z;
+    }
+
+    @Override
+    public void setPushToTalkPressed(boolean pressed) {
+        if (prefConfig == null || !prefConfig.enablePushToTalk || conn == null || keyboardTranslator == null) {
+            pushToTalkActive = false;
+            return;
+        }
+
+        if (pressed == pushToTalkActive) {
+            return;
+        }
+
+        int androidKeyCode = getPushToTalkHostAndroidKeyCode();
+        short translated = keyboardTranslator.translate(androidKeyCode, 0, -1);
+        if (translated == 0) {
+            LimeLog.warning("Unable to translate configured push-to-talk key: " + prefConfig.pushToTalkHostKey);
+            return;
+        }
+
+        conn.sendKeyboardInput(translated,
+                pressed ? KeyboardPacket.KEY_DOWN : KeyboardPacket.KEY_UP,
+                (byte) 0,
+                (byte) 0);
+        pushToTalkActive = pressed;
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         return handleKeyDown(event) || super.onKeyDown(keyCode, event);
@@ -2040,6 +2092,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         int deviceId = event.getDeviceId();
         if (prefConfig.ignoreSynthEvents && deviceId <= 0) {
             return false;
+        }
+
+        if (matchesPushToTalkButton(event)) {
+            if (event.getRepeatCount() == 0) {
+                setPushToTalkPressed(true);
+            }
+            return true;
         }
 
         // Handle a synthetic back button event that some Android OS versions
@@ -2131,6 +2190,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         int deviceId = event.getDeviceId();
         if (prefConfig.ignoreSynthEvents && deviceId <= 0) {
             return false;
+        }
+
+        if (matchesPushToTalkButton(event)) {
+            setPushToTalkPressed(false);
+            return true;
         }
 
         // Handle a synthetic back button event that some Android OS versions
@@ -3082,11 +3146,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         return true;
                     }
 
-                    // If touch is disabled or not initialized, we'll try panning the streamView
-                    if (touchContextMap[0] == null) {
-                        return true;
-                    }
-
+                    // Process multi-touch gestures before checking the active touch mode. Some
+                    // Android builds otherwise drop 3/4/5-finger gestures when touch forwarding is disabled.
                     if (prefConfig.enableMultiTouchGestures || !prefConfig.enableMultiTouchScreen) {
                         int pointerCount = event.getPointerCount();
                         if (pointerCount > 2) {
@@ -3102,6 +3163,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                                 return true;
                             }
                         }
+                    }
+
+                    // If touch is disabled or not initialized, we'll try panning the streamView
+                    if (touchContextMap[0] == null) {
+                        return true;
                     }
 
                     if (prefConfig.enableMultiTouchScreen && !prefConfig.touchscreenTrackpad && trySendTouchEvent(view, event)) {
@@ -3241,7 +3307,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                             toggleKeyboard();
                             return true;
                         } else if (currentEventTime - fourFingerDownTime < FOUR_FINGER_TAP_THRESHOLD) {
-                            toggleFullKeyboard();
+                            toggleKeyboard();
                             return true;
                         } else if (currentEventTime - fiveFingerDownTime < FIVE_FINGER_TAP_THRESHOLD) {
                             if(prefConfig.enableBackMenu) {
@@ -3315,7 +3381,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     fiveFingerDownTime = 0;
                     break;
                 } else if (pointerCount == 4 && fourFingerDownTime > 0 && currentEventTime - fourFingerDownTime < FOUR_FINGER_TAP_THRESHOLD) {
-                    toggleFullKeyboard();
+                    toggleKeyboard();
                     fourFingerDownTime = 0;
                     break;
                 } else if (pointerCount == 3 && threeFingerDownTime > 0 && currentEventTime - threeFingerDownTime < THREE_FINGER_TAP_THRESHOLD) {
@@ -3441,6 +3507,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     }
 
     private void stopConnection() {
+        setPushToTalkPressed(false);
         stopMicrophoneCapture();
 
         if (connecting || connected) {
