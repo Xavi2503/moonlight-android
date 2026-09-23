@@ -6,6 +6,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.view.Display;
 
+import com.limelight.binding.audio.MicrophoneCaptureManager;
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.profiles.ProfilesManager;
 
@@ -872,12 +873,21 @@ private static int getFramePacingValue(Context context) {
         }
 
         config.enableMicrophone = prefs.getBoolean(ENABLE_MICROPHONE_PREF_STRING, DEFAULT_ENABLE_MICROPHONE);
-        try {
-            config.microphoneDeviceId = Integer.parseInt(prefs.getString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE));
+        if (!prefs.contains(MICROPHONE_DEVICE_PREF_STRING)) {
+            int recommendedMicrophone = MicrophoneCaptureManager.getRecommendedInputDeviceId(context);
+            config.microphoneDeviceId = recommendedMicrophone;
+            prefs.edit().putString(MICROPHONE_DEVICE_PREF_STRING,
+                    Integer.toString(recommendedMicrophone)).apply();
         }
-        catch (NumberFormatException e) {
-            config.microphoneDeviceId = 0;
-            prefs.edit().putString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE).apply();
+        else {
+            try {
+                config.microphoneDeviceId = Integer.parseInt(
+                        prefs.getString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE));
+            }
+            catch (NumberFormatException e) {
+                config.microphoneDeviceId = 0;
+                prefs.edit().putString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE).apply();
+            }
         }
 
         config.videoScaleMode = getVideoScaleMode(context);
