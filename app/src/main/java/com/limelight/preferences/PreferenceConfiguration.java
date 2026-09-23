@@ -6,7 +6,6 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.view.Display;
 
-import com.limelight.binding.audio.MicrophoneCaptureManager;
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.profiles.ProfilesManager;
 
@@ -63,7 +62,6 @@ public class PreferenceConfiguration {
     static final String AUDIO_CONFIG_PREF_STRING = "list_audio_config";
     static final String ENABLE_MICROPHONE_PREF_STRING = "checkbox_enable_microphone";
     static final String MICROPHONE_DEVICE_PREF_STRING = "list_microphone_device";
-    private static final String MICROPHONE_BT_MIGRATION_PREF_STRING = "microphone_bt_migration_v1";
     private static final String USB_DRIVER_PREF_SRING = "checkbox_usb_driver";
     private static final String VIDEO_FORMAT_PREF_STRING = "video_format";
     private static final String ONSCREEN_CONTROLLER_PREF_STRING = "checkbox_show_onscreen_controls";
@@ -874,35 +872,12 @@ private static int getFramePacingValue(Context context) {
         }
 
         config.enableMicrophone = prefs.getBoolean(ENABLE_MICROPHONE_PREF_STRING, DEFAULT_ENABLE_MICROPHONE);
-        int recommendedMicrophone = MicrophoneCaptureManager.getRecommendedInputDeviceId(context);
-        if (!prefs.contains(MICROPHONE_DEVICE_PREF_STRING)) {
-            config.microphoneDeviceId = recommendedMicrophone;
-            prefs.edit()
-                    .putString(MICROPHONE_DEVICE_PREF_STRING, Integer.toString(recommendedMicrophone))
-                    .putBoolean(MICROPHONE_BT_MIGRATION_PREF_STRING, true)
-                    .apply();
+        try {
+            config.microphoneDeviceId = Integer.parseInt(prefs.getString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE));
         }
-        else {
-            try {
-                config.microphoneDeviceId = Integer.parseInt(
-                        prefs.getString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE));
-            }
-            catch (NumberFormatException e) {
-                config.microphoneDeviceId = 0;
-                prefs.edit().putString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE).apply();
-            }
-
-            // The signing reset forced existing users back to device 0. Restore the Bluetooth
-            // headset once, then remember the migration so a later manual choice of device 0 wins.
-            if (!prefs.getBoolean(MICROPHONE_BT_MIGRATION_PREF_STRING, false) &&
-                    config.microphoneDeviceId == 0 &&
-                    recommendedMicrophone == MicrophoneCaptureManager.DEVICE_ID_BLUETOOTH_HEADSET) {
-                config.microphoneDeviceId = recommendedMicrophone;
-                prefs.edit()
-                        .putString(MICROPHONE_DEVICE_PREF_STRING, Integer.toString(recommendedMicrophone))
-                        .putBoolean(MICROPHONE_BT_MIGRATION_PREF_STRING, true)
-                        .apply();
-            }
+        catch (NumberFormatException e) {
+            config.microphoneDeviceId = 0;
+            prefs.edit().putString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE).apply();
         }
 
         config.videoScaleMode = getVideoScaleMode(context);
