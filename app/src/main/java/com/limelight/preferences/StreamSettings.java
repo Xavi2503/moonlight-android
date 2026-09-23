@@ -1191,6 +1191,14 @@ public class StreamSettings extends AppCompatActivity {
             else {
                 selectedValue = getPrefs().getString(
                         PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, "0");
+                if ("0".equals(selectedValue) &&
+                        MicrophoneCaptureManager.getRecommendedInputDeviceId(requireContext()) ==
+                                MicrophoneCaptureManager.DEVICE_ID_BLUETOOTH_HEADSET) {
+                    selectedValue = Integer.toString(MicrophoneCaptureManager.DEVICE_ID_BLUETOOTH_HEADSET);
+                    getPrefs().edit()
+                            .putString(PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, selectedValue)
+                            .apply();
+                }
             }
             boolean hasSelectedDevice = "0".equals(selectedValue);
 
