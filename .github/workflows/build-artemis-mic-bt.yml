@@ -33,11 +33,30 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x gradlew
 
+      - name: Prepare debug signing directory
+        run: mkdir -p "$HOME/.android"
+
       - name: Restore stable debug signing key
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
-          key: artemis-mic-bt-debug-keystore-v1
+          key: artemis-mic-bt-debug-keystore-v2
+
+      - name: Create debug signing key on first v2 build
+        shell: bash
+        run: |
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Artemis Mic BT Debug,O=Artemis Mic BT,C=NL"
+          fi
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | grep -E "SHA256:|Owner:"
 
       - name: Build debug APKs
         run: ./gradlew assembleNonRoot_gameDebug --stacktrace
