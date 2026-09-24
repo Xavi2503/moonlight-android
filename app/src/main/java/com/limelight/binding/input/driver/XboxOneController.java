@@ -65,6 +65,7 @@ public class XboxOneController extends AbstractXboxController {
     private short highFreqMotor = 0;
     private short leftTriggerMotor = 0;
     private short rightTriggerMotor = 0;
+    private String lastDiagnosticSignature = "";
 
     public XboxOneController(UsbDevice device, UsbDeviceConnection connection, int deviceId, UsbDriverListener listener) {
         super(device, connection, deviceId, listener);
@@ -109,9 +110,71 @@ public class XboxOneController extends AbstractXboxController {
                 0x00, 0x00, 0x00, 0x00, 0x00};
         connection.bulkTransfer(outEndpt, payload, payload.length, 3000);
     }
+    private void reportRazerRawDiagnostic(ByteBuffer buffer) {
+        if (device.getVendorId() != 0x1532 || buffer.remaining() <= 0) {
+            return;
+        }
+
+        ByteBuffer copy = buffer.asReadOnlyBuffer();
+        int start = copy.position();
+        int length = copy.remaining();
+        int reportType = copy.get(start) & 0xFF;
+
+        String signature;
+        if (reportType == 0x20 && length >= 6) {
+            int buttons1 = copy.get(start + 4) & 0xFF;
+            int buttons2 = copy.get(start + 5) & 0xFF;
+
+            StringBuilder extras = new StringBuilder();
+            if (length > 18) {
+                for (int i = start + 18; i < start + length && i < start + 26; i++) {
+                    if (extras.length() > 0) {
+                        extras.append(' ');
+                    }
+                    extras.append(String.format("%02X", copy.get(i) & 0xFF));
+                }
+            }
+
+            signature = String.format("%02X:%02X:%02X:%s",
+                    reportType, buttons1, buttons2, extras.toString());
+            if (signature.equals(lastDiagnosticSignature)) {
+                return;
+            }
+
+            lastDiagnosticSignature = signature;
+            listener.reportControllerRawDiagnostic(
+                    getControllerId(),
+                    String.format("KISHI XINPUT 20 | buttons=%02X %02X | len=%d | extra=%s",
+                            buttons1, buttons2, length,
+                            extras.length() == 0 ? "-" : extras.toString()));
+        }
+        else if (reportType != 0x07) {
+            StringBuilder raw = new StringBuilder();
+            for (int i = start; i < start + length && i < start + 24; i++) {
+                if (raw.length() > 0) {
+                    raw.append(' ');
+                }
+                raw.append(String.format("%02X", copy.get(i) & 0xFF));
+            }
+
+            signature = reportType + ":" + raw.toString();
+            if (signature.equals(lastDiagnosticSignature)) {
+                return;
+            }
+
+            lastDiagnosticSignature = signature;
+            listener.reportControllerRawDiagnostic(
+                    getControllerId(),
+                    String.format("KISHI XINPUT RAW | type=%02X | len=%d | %s",
+                            reportType, length, raw.toString()));
+        }
+    }
+
+
 
     @Override
     protected boolean handleRead(ByteBuffer buffer) {
+        reportRazerRawDiagnostic(buffer);
         switch (buffer.get())
         {
             case 0x20:
