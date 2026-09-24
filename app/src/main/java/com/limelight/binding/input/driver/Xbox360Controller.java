@@ -3,11 +3,15 @@ package com.limelight.binding.input.driver;
 import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
+import android.hardware.usb.UsbEndpoint;
+import android.hardware.usb.UsbInterface;
 
 import com.limelight.LimeLog;
 import com.limelight.nvstream.input.ControllerPacket;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Xbox360Controller extends AbstractXboxController {
     private String lastDiagnosticSignature = "";
@@ -45,6 +49,94 @@ public class Xbox360Controller extends AbstractXboxController {
             0x413d, // 小鸡启明星
             0x3537,//小鸡启明星6300固件
     };
+
+    private void startKishiAuxDiagnostics() {
+        if (device.getVendorId() != 0x1532 || device.getProductId() != 0x0037) {
+            return;
+        }
+
+        kishiAuxDiagnosticsRunning = true;
+
+        for (int interfaceIndex = 1; interfaceIndex < device.getInterfaceCount(); interfaceIndex++) {
+            UsbInterface iface = device.getInterface(interfaceIndex);
+
+            for (int endpointIndex = 0; endpointIndex < iface.getEndpointCount(); endpointIndex++) {
+                UsbEndpoint endpoint = iface.getEndpoint(endpointIndex);
+
+                if (endpoint.getDirection() != UsbConstants.USB_DIR_IN) {
+                    continue;
+                }
+
+                final int diagnosticInterface = interfaceIndex;
+                final UsbEndpoint diagnosticEndpoint = endpoint;
+
+                Thread thread = new Thread(() -> {
+                    byte[] buffer = new byte[Math.max(64, diagnosticEndpoint.getMaxPacketSize())];
+                    String lastReport = "";
+
+                    while (kishiAuxDiagnosticsRunning && !Thread.currentThread().isInterrupted()) {
+                        int result = connection.bulkTransfer(
+                                diagnosticEndpoint,
+                                buffer,
+                                buffer.length,
+                                500);
+
+                        if (result <= 0) {
+                            continue;
+                        }
+
+                        StringBuilder hex = new StringBuilder();
+                        for (int i = 0; i < result; i++) {
+                            if (hex.length() > 0) {
+                                hex.append(' ');
+                            }
+                            hex.append(String.format("%02X", buffer[i] & 0xFF));
+                        }
+
+                        String report = String.format(
+                                "KISHI AUX IF%d EP%02X | len=%d | %s",
+                                diagnosticInterface,
+                                diagnosticEndpoint.getAddress(),
+                                result,
+                                hex.toString());
+
+                        if (!report.equals(lastReport)) {
+                            lastReport = report;
+                            reportRawDiagnostic(report);
+                        }
+                    }
+                }, String.format("KishiAux-%02X", diagnosticEndpoint.getAddress()));
+
+                kishiAuxDiagnosticThreads.add(thread);
+                thread.start();
+            }
+        }
+    }
+
+    private void stopKishiAuxDiagnostics() {
+        kishiAuxDiagnosticsRunning = false;
+
+        for (Thread thread : kishiAuxDiagnosticThreads) {
+            thread.interrupt();
+        }
+
+        kishiAuxDiagnosticThreads.clear();
+    }
+
+    @Override
+    public boolean start() {
+        boolean started = super.start();
+        if (started) {
+            startKishiAuxDiagnostics();
+        }
+        return started;
+    }
+
+    @Override
+    public void stop() {
+        stopKishiAuxDiagnostics();
+        super.stop();
+    }
 
     public static boolean canClaimDevice(UsbDevice device) {
         for (int supportedVid : SUPPORTED_VENDORS) {
