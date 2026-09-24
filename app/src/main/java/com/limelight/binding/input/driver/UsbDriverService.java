@@ -60,6 +60,13 @@ public class UsbDriverService extends Service implements UsbDriverListener {
     }
 
     @Override
+    public void reportControllerRawDiagnostic(int controllerId, String report) {
+        if (listener != null) {
+            listener.reportControllerRawDiagnostic(controllerId, report);
+        }
+    }
+
+    @Override
     public void deviceRemoved(AbstractController controller) {
         // Remove the the controller from our list (if not removed already)
         controllers.remove(controller);
