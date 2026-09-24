@@ -102,6 +102,10 @@ public class PreferenceConfiguration {
     public static final String PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING = "push_to_talk_controller_keycode";
     public static final String PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING = "push_to_talk_controller_scancode";
     public static final String PUSH_TO_TALK_HOST_KEY_PREF_STRING = "edit_push_to_talk_host_key";
+    public static final String ENABLE_CONTROLLER_KEYBOARD_PREF_STRING = "checkbox_enable_controller_keyboard";
+    public static final String CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING = "controller_keyboard_keycode";
+    public static final String CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING = "controller_keyboard_scancode";
+    public static final String CONTROLLER_KEYBOARD_TYPE_PREF_STRING = "list_controller_keyboard_type";
     private static final String PREVENT_PACKET_LOSS_PREF_STRING = "checkbox_prevent_packet_loss";
 
     private static final String LIST_ONSCREEN_KEYBOARD_ALIGN_MODE = "list_onscreen_keyboard_align_mode";
@@ -201,6 +205,10 @@ public class PreferenceConfiguration {
     private static final int DEFAULT_PUSH_TO_TALK_CONTROLLER_KEYCODE = 0;
     private static final int DEFAULT_PUSH_TO_TALK_CONTROLLER_SCANCODE = 0;
     private static final String DEFAULT_PUSH_TO_TALK_HOST_KEY = "Z";
+    private static final boolean DEFAULT_ENABLE_CONTROLLER_KEYBOARD = false;
+    private static final int DEFAULT_CONTROLLER_KEYBOARD_KEYCODE = 0;
+    private static final int DEFAULT_CONTROLLER_KEYBOARD_SCANCODE = 0;
+    private static final String DEFAULT_CONTROLLER_KEYBOARD_TYPE = "system";
     private static final boolean DEFAULT_PREVENT_PACKET_LOSS = false;
     private static final boolean DEFAULT_GAMEPAD_ENABLE_BATTERY_REPORT = true;
     private static final boolean DEFAULT_FORCE_QWERTY = true;
@@ -268,6 +276,10 @@ public class PreferenceConfiguration {
     public int pushToTalkControllerKeyCode;
     public int pushToTalkControllerScanCode;
     public String pushToTalkHostKey;
+    public boolean enableControllerKeyboard;
+    public int controllerKeyboardKeyCode;
+    public int controllerKeyboardScanCode;
+    public String controllerKeyboardType;
     public boolean forceQwerty;
     public boolean backAsMeta;
     public boolean ignoreSynthEvents;
@@ -1051,6 +1063,10 @@ private static int getFramePacingValue(Context context) {
         config.pushToTalkControllerKeyCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, DEFAULT_PUSH_TO_TALK_CONTROLLER_KEYCODE);
         config.pushToTalkControllerScanCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING, DEFAULT_PUSH_TO_TALK_CONTROLLER_SCANCODE);
         config.pushToTalkHostKey = prefs.getString(PUSH_TO_TALK_HOST_KEY_PREF_STRING, DEFAULT_PUSH_TO_TALK_HOST_KEY);
+        config.enableControllerKeyboard = prefs.getBoolean(ENABLE_CONTROLLER_KEYBOARD_PREF_STRING, DEFAULT_ENABLE_CONTROLLER_KEYBOARD);
+        config.controllerKeyboardKeyCode = prefs.getInt(CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING, DEFAULT_CONTROLLER_KEYBOARD_KEYCODE);
+        config.controllerKeyboardScanCode = prefs.getInt(CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING, DEFAULT_CONTROLLER_KEYBOARD_SCANCODE);
+        config.controllerKeyboardType = prefs.getString(CONTROLLER_KEYBOARD_TYPE_PREF_STRING, DEFAULT_CONTROLLER_KEYBOARD_TYPE);
         config.preventPacketLoss = prefs.getBoolean(PREVENT_PACKET_LOSS_PREF_STRING, DEFAULT_PREVENT_PACKET_LOSS);
 
         // Read custom values
