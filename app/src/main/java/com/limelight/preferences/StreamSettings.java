@@ -1072,7 +1072,14 @@ public class StreamSettings extends AppCompatActivity {
                 default:
                     return String.format(Locale.US, "SCAN 0x%X", scanCode);
             }
+        }        private boolean isKishiV3ProXlInput(KeyEvent event) {
+            InputDevice device = event.getDevice();
+            return device != null &&
+                    device.getVendorId() == 0x1532 &&
+                    device.getProductId() == 0x0037;
         }
+
+
 
         boolean capturePushToTalkButton(KeyEvent event) {
             if (!waitingForPushToTalkButton) {
@@ -1083,7 +1090,7 @@ public class StreamSettings extends AppCompatActivity {
             boolean controllerSource =
                     (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
                     (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
-            if (!controllerSource) {
+            if (!controllerSource && !isKishiV3ProXlInput(event)) {
                 return false;
             }
 
@@ -1189,7 +1196,7 @@ public class StreamSettings extends AppCompatActivity {
             boolean controllerSource =
                     (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
                     (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
-            if (!controllerSource) {
+            if (!controllerSource && !isKishiV3ProXlInput(event)) {
                 return false;
             }
 
