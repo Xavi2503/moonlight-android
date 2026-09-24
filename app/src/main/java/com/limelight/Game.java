@@ -465,6 +465,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         streamContainer.setOnKeyListener(this);
         streamContainer.setInputCallbacks(this);
         streamContainer.setCommitTextEnabled(prefConfig.enableCommitText);
+        // StreamContainer wraps the actual SurfaceView/GLSurfaceView. Attach the
+        // touch listener to the rendered surface so multi-finger gestures reach
+        // Game.handleMotionEvent() instead of being lost inside the container.
+        streamContainer.getSurfaceView().setOnTouchListener(this);
 
         rootView = streamContainer.getParent();
 
