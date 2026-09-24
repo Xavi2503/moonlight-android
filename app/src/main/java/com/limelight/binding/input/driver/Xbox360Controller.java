@@ -98,9 +98,7 @@ public class Xbox360Controller extends AbstractXboxController {
         }
 
         lastDiagnosticSignature = signature;
-        listener.reportControllerRawDiagnostic(
-                getControllerId(),
-                String.format("KISHI XINPUT 360 | buttons=%02X %02X | len=%d | extra=%s",
+        reportRawDiagnostic(String.format("KISHI XINPUT 360 | buttons=%02X %02X | len=%d | extra=%s",
                         buttons1, buttons2, length,
                         extras.length() == 0 ? "-" : extras.toString()));
     }
