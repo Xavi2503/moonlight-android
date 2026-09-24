@@ -3013,7 +3013,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         // Keep the diagnostic useful on-screen: ignore the ordinary all-buttons-released
         // XInput report, but still show non-standard/vendor reports.
-        if (report.contains("KISHI XINPUT 20") && report.contains("buttons=00 00")) {
+        if (report.contains("XINPUT") && report.contains("buttons=00 00")) {
             return;
         }
 
