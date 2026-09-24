@@ -374,6 +374,33 @@
             app:iconSpaceReserved="false" />
         <CheckBoxPreference
             android:defaultValue="false"
+            android:key="checkbox_enable_controller_keyboard"
+            android:summary="@string/summary_enable_controller_keyboard"
+            android:title="@string/title_enable_controller_keyboard"
+            app:iconSpaceReserved="false" />
+        <Preference
+            android:dependency="checkbox_enable_controller_keyboard"
+            android:key="preference_learn_controller_keyboard_button"
+            android:summary="@string/summary_controller_keyboard_button_unassigned"
+            android:title="@string/title_controller_keyboard_button"
+            app:iconSpaceReserved="false" />
+        <ListPreference
+            android:defaultValue="system"
+            android:dependency="checkbox_enable_controller_keyboard"
+            android:entries="@array/controller_keyboard_type_names"
+            android:entryValues="@array/controller_keyboard_type_values"
+            android:key="list_controller_keyboard_type"
+            android:title="@string/title_controller_keyboard_type"
+            app:iconSpaceReserved="false"
+            app:useSimpleSummaryProvider="true" />
+        <Preference
+            android:dependency="checkbox_enable_controller_keyboard"
+            android:key="preference_choose_android_keyboard"
+            android:summary="@string/summary_choose_android_keyboard"
+            android:title="@string/title_choose_android_keyboard"
+            app:iconSpaceReserved="false" />
+        <CheckBoxPreference
+            android:defaultValue="false"
             android:dependency="checkbox_enable_rumble"
             android:key="checkbox_vibrate_fallback"
             android:summary="@string/summary_checkbox_vibrate_fallback"
