@@ -15,6 +15,8 @@ import java.util.List;
 
 public class Xbox360Controller extends AbstractXboxController {
     private String lastDiagnosticSignature = "";
+    private final List<Thread> kishiAuxDiagnosticThreads = new ArrayList<>();
+    private volatile boolean kishiAuxDiagnosticsRunning;
 
     private static final int XB360_IFACE_SUBCLASS = 93;
     private static final int XB360_IFACE_PROTOCOL = 1; // Wired only
