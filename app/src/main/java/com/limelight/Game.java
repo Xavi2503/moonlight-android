@@ -3481,6 +3481,50 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         return handleMotionEvent(view, event);
     }
 
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (prefConfig != null && prefConfig.enableMultiTouchGestures) {
+            int action = event.getActionMasked();
+            int pointerCount = event.getPointerCount();
+
+            if (action == MotionEvent.ACTION_POINTER_DOWN) {
+                if (pointerCount == 4) {
+                    threeFingerDownTime = 0;
+                    fourFingerDownTime = event.getEventTime();
+                }
+                else if (pointerCount == 5) {
+                    threeFingerDownTime = 0;
+                    fourFingerDownTime = 0;
+                    fiveFingerDownTime = event.getEventTime();
+                }
+            }
+            else if (action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_UP) {
+                long now = event.getEventTime();
+
+                if (pointerCount >= 5 && fiveFingerDownTime > 0 &&
+                        now - fiveFingerDownTime < FIVE_FINGER_TAP_THRESHOLD) {
+                    fiveFingerDownTime = 0;
+                    fourFingerDownTime = 0;
+                    threeFingerDownTime = 0;
+                    if (prefConfig.enableBackMenu) {
+                        showGameMenu(null);
+                    }
+                    return true;
+                }
+
+                if (pointerCount == 4 && fourFingerDownTime > 0 &&
+                        now - fourFingerDownTime < FOUR_FINGER_TAP_THRESHOLD) {
+                    fourFingerDownTime = 0;
+                    threeFingerDownTime = 0;
+                    toggleKeyboard();
+                    return true;
+                }
+            }
+        }
+
+        return super.dispatchTouchEvent(event);
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouch(View view, MotionEvent event) {
