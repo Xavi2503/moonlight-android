@@ -40,6 +40,7 @@ import android.view.DisplayCutout;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.inputmethod.InputMethodManager;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
@@ -127,7 +128,9 @@ public class StreamSettings extends AppCompatActivity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (prefsFragment != null && prefsFragment.capturePushToTalkButton(event)) {
+        if (prefsFragment != null &&
+                (prefsFragment.capturePushToTalkButton(event) ||
+                        prefsFragment.captureControllerKeyboardButton(event))) {
             return true;
         }
         return super.dispatchKeyEvent(event);
@@ -192,6 +195,10 @@ public class StreamSettings extends AppCompatActivity {
         private EditTextPreference pushToTalkHostKeyPreference;
         private Preference pushToTalkButtonPreference;
         private boolean waitingForPushToTalkButton;
+
+        private Preference controllerKeyboardButtonPreference;
+        private Preference chooseAndroidKeyboardPreference;
+        private boolean waitingForControllerKeyboardButton;
 
         public SettingsFragment(PreferenceConfiguration prefCfg) {
             prevPrefConfig = prefCfg;
@@ -423,6 +430,7 @@ public class StreamSettings extends AppCompatActivity {
 
             initializeMicrophonePreferences(screen);
             initializePushToTalkPreferences();
+            initializeControllerKeyboardPreferences();
 
             // Fire TV apps are not allowed to use WebViews or browsers, so hide the Help category
             /*if (getActivity().getPackageManager().hasSystemFeature("amazon.hardware.fire_tv")) {
@@ -1015,6 +1023,7 @@ public class StreamSettings extends AppCompatActivity {
                 updatePushToTalkButtonSummary();
 
                 pushToTalkButtonPreference.setOnPreferenceClickListener(preference -> {
+                    waitingForControllerKeyboardButton = false;
                     waitingForPushToTalkButton = true;
                     pushToTalkButtonPreference.setSummary(R.string.push_to_talk_learn_prompt);
                     Toast.makeText(requireContext(), R.string.push_to_talk_learn_prompt, Toast.LENGTH_LONG).show();
@@ -1088,6 +1097,17 @@ public class StreamSettings extends AppCompatActivity {
                 return true;
             }
 
+            int keyboardKeyCode = getPrefs().getInt(
+                    PreferenceConfiguration.CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING, 0);
+            int keyboardScanCode = getPrefs().getInt(
+                    PreferenceConfiguration.CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING, 0);
+            if (sameControllerButton(keyCode, scanCode, keyboardKeyCode, keyboardScanCode)) {
+                waitingForPushToTalkButton = false;
+                updatePushToTalkButtonSummary();
+                Toast.makeText(requireContext(), R.string.push_to_talk_button_conflict, Toast.LENGTH_LONG).show();
+                return true;
+            }
+
             getPrefs().edit()
                     .putInt(PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, keyCode)
                     .putInt(PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING, scanCode)
@@ -1097,6 +1117,112 @@ public class StreamSettings extends AppCompatActivity {
             updatePushToTalkButtonSummary();
             Toast.makeText(requireContext(),
                     getString(R.string.push_to_talk_button_saved,
+                            describePushToTalkButton(keyCode, scanCode)),
+                    Toast.LENGTH_SHORT).show();
+            return true;
+        }
+
+        private boolean sameControllerButton(int keyCodeA, int scanCodeA, int keyCodeB, int scanCodeB) {
+            boolean validKeyA = keyCodeA != 0 && keyCodeA != KeyEvent.KEYCODE_UNKNOWN;
+            boolean validKeyB = keyCodeB != 0 && keyCodeB != KeyEvent.KEYCODE_UNKNOWN;
+            if (validKeyA && validKeyB && keyCodeA == keyCodeB) {
+                return true;
+            }
+
+            return scanCodeA != 0 && scanCodeB != 0 && scanCodeA == scanCodeB;
+        }
+
+        private void initializeControllerKeyboardPreferences() {
+            controllerKeyboardButtonPreference = findPreference("preference_learn_controller_keyboard_button");
+            chooseAndroidKeyboardPreference = findPreference("preference_choose_android_keyboard");
+
+            if (controllerKeyboardButtonPreference != null) {
+                updateControllerKeyboardButtonSummary();
+
+                controllerKeyboardButtonPreference.setOnPreferenceClickListener(preference -> {
+                    waitingForPushToTalkButton = false;
+                    waitingForControllerKeyboardButton = true;
+                    controllerKeyboardButtonPreference.setSummary(R.string.controller_keyboard_learn_prompt);
+                    Toast.makeText(requireContext(), R.string.controller_keyboard_learn_prompt, Toast.LENGTH_LONG).show();
+                    return true;
+                });
+            }
+
+            if (chooseAndroidKeyboardPreference != null) {
+                chooseAndroidKeyboardPreference.setOnPreferenceClickListener(preference -> {
+                    InputMethodManager inputMethodManager =
+                            (InputMethodManager) requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (inputMethodManager != null) {
+                        inputMethodManager.showInputMethodPicker();
+                    }
+                    return true;
+                });
+            }
+        }
+
+        private void updateControllerKeyboardButtonSummary() {
+            if (controllerKeyboardButtonPreference == null) {
+                return;
+            }
+
+            int keyCode = getPrefs().getInt(
+                    PreferenceConfiguration.CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING, 0);
+            int scanCode = getPrefs().getInt(
+                    PreferenceConfiguration.CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING, 0);
+            if (keyCode == 0 && scanCode == 0) {
+                controllerKeyboardButtonPreference.setSummary(
+                        R.string.summary_controller_keyboard_button_unassigned);
+            }
+            else {
+                controllerKeyboardButtonPreference.setSummary(
+                        getString(R.string.summary_controller_keyboard_button_assigned,
+                                describePushToTalkButton(keyCode, scanCode)));
+            }
+        }
+
+        boolean captureControllerKeyboardButton(KeyEvent event) {
+            if (!waitingForControllerKeyboardButton) {
+                return false;
+            }
+
+            int source = event.getSource();
+            boolean controllerSource =
+                    (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                    (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+            if (!controllerSource) {
+                return false;
+            }
+
+            if (event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0) {
+                return true;
+            }
+
+            int keyCode = event.getKeyCode();
+            int scanCode = event.getScanCode();
+            if ((keyCode == 0 || keyCode == KeyEvent.KEYCODE_UNKNOWN) && scanCode == 0) {
+                return true;
+            }
+
+            int pttKeyCode = getPrefs().getInt(
+                    PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, 0);
+            int pttScanCode = getPrefs().getInt(
+                    PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING, 0);
+            if (sameControllerButton(keyCode, scanCode, pttKeyCode, pttScanCode)) {
+                waitingForControllerKeyboardButton = false;
+                updateControllerKeyboardButtonSummary();
+                Toast.makeText(requireContext(), R.string.controller_keyboard_button_conflict, Toast.LENGTH_LONG).show();
+                return true;
+            }
+
+            getPrefs().edit()
+                    .putInt(PreferenceConfiguration.CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING, keyCode)
+                    .putInt(PreferenceConfiguration.CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING, scanCode)
+                    .apply();
+
+            waitingForControllerKeyboardButton = false;
+            updateControllerKeyboardButtonSummary();
+            Toast.makeText(requireContext(),
+                    getString(R.string.controller_keyboard_button_saved,
                             describePushToTalkButton(keyCode, scanCode)),
                     Toast.LENGTH_SHORT).show();
             return true;
