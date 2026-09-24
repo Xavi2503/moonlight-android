@@ -158,36 +158,30 @@ public class UsbDriverService extends Service implements UsbDriverListener {
             return;
         }
 
-        listener.reportControllerRawDiagnostic(-1,
-                String.format("KISHI USB | VID:PID=%04X:%04X | interfaces=%d",
-                        device.getVendorId(), device.getProductId(), device.getInterfaceCount()));
+        StringBuilder report = new StringBuilder();
+        report.append(String.format("KISHI USB MAP\nVID:PID=%04X:%04X\ninterfaces=%d",
+                device.getVendorId(), device.getProductId(), device.getInterfaceCount()));
 
         for (int i = 0; i < device.getInterfaceCount(); i++) {
             UsbInterface iface = device.getInterface(i);
-            StringBuilder endpoints = new StringBuilder();
+            report.append(String.format("\n\nIF%d class=%02X sub=%02X proto=%02X eps=%d",
+                    i,
+                    iface.getInterfaceClass(),
+                    iface.getInterfaceSubclass(),
+                    iface.getInterfaceProtocol(),
+                    iface.getEndpointCount()));
 
             for (int e = 0; e < iface.getEndpointCount(); e++) {
                 UsbEndpoint ep = iface.getEndpoint(e);
-                if (endpoints.length() > 0) {
-                    endpoints.append(" ");
-                }
-
-                endpoints.append(String.format("[%02X dir=%d type=%d max=%d]",
+                report.append(String.format("\n  EP%02X dir=%d type=%d max=%d",
                         ep.getAddress(),
                         ep.getDirection(),
                         ep.getType(),
                         ep.getMaxPacketSize()));
             }
-
-            listener.reportControllerRawDiagnostic(-1,
-                    String.format("KISHI IF%d | class=%02X sub=%02X proto=%02X | eps=%d %s",
-                            i,
-                            iface.getInterfaceClass(),
-                            iface.getInterfaceSubclass(),
-                            iface.getInterfaceProtocol(),
-                            iface.getEndpointCount(),
-                            endpoints.toString()));
         }
+
+        listener.reportControllerRawDiagnostic(-1, report.toString());
     }
 
     private void handleUsbDeviceState(UsbDevice device) {
