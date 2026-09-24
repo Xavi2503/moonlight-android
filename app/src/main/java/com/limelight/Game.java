@@ -2056,7 +2056,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 event.getScanCode() == prefConfig.controllerKeyboardScanCode;
     }
 
-    private void toggleConfiguredControllerKeyboard() {
+    @Override
+    public void toggleControllerKeyboard() {
         if (prefConfig != null && "artemis".equals(prefConfig.controllerKeyboardType)) {
             toggleFullKeyboard();
         }
@@ -2127,7 +2128,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         if (matchesControllerKeyboardButton(event)) {
             if (event.getRepeatCount() == 0) {
-                toggleConfiguredControllerKeyboard();
+                toggleControllerKeyboard();
             }
             return true;
         }
