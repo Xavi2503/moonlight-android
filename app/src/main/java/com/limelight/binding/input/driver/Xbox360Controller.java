@@ -70,9 +70,46 @@ public class Xbox360Controller extends AbstractXboxController {
             return b;
         }
     }
+    private void reportRazerRawDiagnostic(ByteBuffer buffer) {
+        if (device.getVendorId() != 0x1532 || buffer.remaining() < 4) {
+            return;
+        }
+
+        ByteBuffer copy = buffer.asReadOnlyBuffer();
+        int start = copy.position();
+        int length = copy.remaining();
+        int buttons1 = copy.get(start + 2) & 0xFF;
+        int buttons2 = copy.get(start + 3) & 0xFF;
+
+        StringBuilder extras = new StringBuilder();
+        if (length > 14) {
+            for (int i = start + 14; i < start + length && i < start + 22; i++) {
+                if (extras.length() > 0) {
+                    extras.append(' ');
+                }
+                extras.append(String.format("%02X", copy.get(i) & 0xFF));
+            }
+        }
+
+        String signature = String.format("%02X:%02X:%s",
+                buttons1, buttons2, extras.toString());
+        if (signature.equals(lastDiagnosticSignature)) {
+            return;
+        }
+
+        lastDiagnosticSignature = signature;
+        listener.reportControllerRawDiagnostic(
+                getControllerId(),
+                String.format("KISHI XINPUT 360 | buttons=%02X %02X | len=%d | extra=%s",
+                        buttons1, buttons2, length,
+                        extras.length() == 0 ? "-" : extras.toString()));
+    }
+
+
 
     @Override
     protected boolean handleRead(ByteBuffer buffer) {
+        reportRazerRawDiagnostic(buffer);
         if (buffer.remaining() < 14) {
             LimeLog.severe("Read too small: "+buffer.remaining());
             return false;
