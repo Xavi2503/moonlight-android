@@ -200,4 +200,14 @@
         <item>right</item>
     </string-array>
 
+    <string-array name="controller_keyboard_type_names">
+        <item>@string/controller_keyboard_type_system</item>
+        <item>@string/controller_keyboard_type_artemis</item>
+    </string-array>
+
+    <string-array name="controller_keyboard_type_values" translatable="false">
+        <item>system</item>
+        <item>artemis</item>
+    </string-array>
+
 </resources>
