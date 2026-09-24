@@ -186,16 +186,13 @@ public class Xbox360Controller extends AbstractXboxController {
 
     @Override
     public boolean start() {
-        boolean started = super.start();
-        if (started) {
-            startKishiAuxDiagnostics();
-        }
-        return started;
+        // For the Kishi V3 Pro XL we deliberately leave auxiliary HID interfaces
+        // to Android. Do not attach the temporary raw UsbRequest sniffer here.
+        return super.start();
     }
 
     @Override
     public void stop() {
-        stopKishiAuxDiagnostics();
         super.stop();
     }
 
