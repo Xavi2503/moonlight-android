@@ -145,7 +145,7 @@ public final class RazerKishiHapticsController extends AbstractController {
         int result = connection.controlTransfer(
                 UsbConstants.USB_DIR_OUT |
                         UsbConstants.USB_TYPE_CLASS |
-                        UsbConstants.USB_RECIP_INTERFACE,
+                        0x01,
                 0x09,
                 0x0300,
                 hapticInterface.getId(),
