@@ -234,8 +234,10 @@ public class UsbDriverService extends Service implements UsbDriverListener {
 
 
             AbstractController controller;
-
-            if (XboxOneController.canClaimDevice(device)) {
+            if (RazerKishiHapticsController.canClaimDevice(device)) {
+                controller = new RazerKishiHapticsController(device, connection, nextDeviceId++, this);
+            }
+            else if (XboxOneController.canClaimDevice(device)) {
                 controller = new XboxOneController(device, connection, nextDeviceId++, this);
             }
             else if (Xbox360Controller.canClaimDevice(device)) {
@@ -329,7 +331,10 @@ public class UsbDriverService extends Service implements UsbDriverListener {
 
     public static boolean shouldClaimDevice(UsbDevice device, boolean claimAllAvailable) {
         LimeLog.info("UsbDevice info: "+device.toString());
-        return ((!kernelSupportsXboxOne() || !isRecognizedInputDevice(device) || claimAllAvailable) && XboxOneController.canClaimDevice(device)) ||
+        // The Kishi V3 Pro XL haptics companion intentionally coexists with Android's
+        // native HID gamepad. It claims only the dedicated haptics interface.
+        return RazerKishiHapticsController.canClaimDevice(device) ||
+                ((!kernelSupportsXboxOne() || !isRecognizedInputDevice(device) || claimAllAvailable) && XboxOneController.canClaimDevice(device)) ||
                 ((!isRecognizedInputDevice(device) || claimAllAvailable) && Xbox360Controller.canClaimDevice(device)) ||
                 // We must not call isRecognizedInputDevice() because wireless controllers don't share the same product ID as the dongle
                 ((!kernelSupportsXbox360W() || claimAllAvailable) && Xbox360WirelessDongle.canClaimDevice(device)) ||
