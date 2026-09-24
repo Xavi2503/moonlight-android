@@ -3017,6 +3017,21 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         context.leftTrigger = (byte)(leftTrigger * 0xFF);
         context.rightTrigger = (byte)(rightTrigger * 0xFF);
 
+        final int quitCombo = ControllerPacket.BACK_FLAG | ControllerPacket.PLAY_FLAG |
+                ControllerPacket.LB_FLAG | ControllerPacket.RB_FLAG;
+
+        // The USB/XInput driver bypasses handleButtonDown(), so detect the quit combo
+        // directly from the raw controller state before any custom button remapping.
+        // Use a mask instead of exact equality because some XInput controllers (including
+        // the Kishi V3 family) may report an additional button flag at the same time.
+        if ((buttonFlags & quitCombo) == quitCombo) {
+            context.pendingExit = true;
+            context.inputMap = 0;
+            sendControllerInputPacket(context);
+            mainThreadHandler.post(activityContext::finish);
+            return;
+        }
+
         // When the built-in USB/XInput driver owns the controller, Android KeyEvents are bypassed.
         // Convert the assigned gamepad button to push-to-talk here and remove it from the controller
         // packet so the game doesn't also see the remapped source button.
@@ -3028,21 +3043,6 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 mainThreadHandler.post(() -> gestures.setPushToTalkPressed(pushToTalkPressed));
             }
             buttonFlags &= ~pushToTalkFlag;
-        }
-
-        final int quitCombo = ControllerPacket.BACK_FLAG | ControllerPacket.PLAY_FLAG |
-                ControllerPacket.LB_FLAG | ControllerPacket.RB_FLAG;
-
-        // The USB/XInput driver bypasses handleButtonDown(), so the normal Artemis
-        // quit-combo logic never sees these buttons. Intercept the full combo here
-        // before it is sent to the host. This keeps XInput rumble enabled without
-        // leaking the Menu/Start press into Playnite or the streamed game.
-        if (buttonFlags == quitCombo) {
-            context.pendingExit = true;
-            context.inputMap = 0;
-            sendControllerInputPacket(context);
-            mainThreadHandler.post(activityContext::finish);
-            return;
         }
 
         // Ignore release reports while the activity is finishing after the quit combo.
