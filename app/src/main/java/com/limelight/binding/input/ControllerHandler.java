@@ -2,6 +2,7 @@ package com.limelight.binding.input;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.hardware.BatteryState;
 import android.hardware.Sensor;
@@ -3010,6 +3011,16 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     @Override
     public void reportControllerRawDiagnostic(int controllerId, String report) {
         LimeLog.info(report);
+
+        if (report.startsWith("KISHI USB MAP")) {
+            mainThreadHandler.post(() ->
+                    new AlertDialog.Builder(activityContext)
+                            .setTitle("Kishi USB diagnostics")
+                            .setMessage(report)
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show());
+            return;
+        }
 
         // Keep the diagnostic useful on-screen: ignore the ordinary all-buttons-released
         // XInput report, but still show non-standard/vendor reports.
