@@ -2983,6 +2983,30 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
     }
 
+    private int getControllerKeyboardFlag() {
+        if (!prefConfig.enableControllerKeyboard) {
+            return 0;
+        }
+
+        Integer mappedFlag = ANDROID_TO_LI_BUTTON_MAP.get(prefConfig.controllerKeyboardKeyCode);
+        if (mappedFlag != null) {
+            return mappedFlag;
+        }
+
+        switch (prefConfig.controllerKeyboardScanCode) {
+            case 0x2c4:
+                return ControllerPacket.PADDLE1_FLAG;
+            case 0x2c5:
+                return ControllerPacket.PADDLE2_FLAG;
+            case 0x2c6:
+                return ControllerPacket.PADDLE3_FLAG;
+            case 0x2c7:
+                return ControllerPacket.PADDLE4_FLAG;
+            default:
+                return 0;
+        }
+    }
+
     @Override
     public void reportControllerState(int controllerId, int buttonFlags,
                                       float leftStickX, float leftStickY,
@@ -3043,6 +3067,19 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 mainThreadHandler.post(() -> gestures.setPushToTalkPressed(pushToTalkPressed));
             }
             buttonFlags &= ~pushToTalkFlag;
+        }
+
+        // Do the same for the controller keyboard shortcut. Toggle once on the
+        // rising edge and consume the mapped XInput button so the host/game does
+        // not see the shortcut button as normal controller input.
+        int controllerKeyboardFlag = getControllerKeyboardFlag();
+        if (controllerKeyboardFlag != 0) {
+            final boolean controllerKeyboardPressed = (buttonFlags & controllerKeyboardFlag) != 0;
+            if (controllerKeyboardPressed && !context.controllerKeyboardPressed) {
+                mainThreadHandler.post(gestures::toggleControllerKeyboard);
+            }
+            context.controllerKeyboardPressed = controllerKeyboardPressed;
+            buttonFlags &= ~controllerKeyboardFlag;
         }
 
         // Ignore release reports while the activity is finishing after the quit combo.
@@ -3106,6 +3143,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public int inputMap = 0;
         public boolean pendingExit;
         public boolean pushToTalkPressed;
+        public boolean controllerKeyboardPressed;
         public byte leftTrigger = 0x00;
         public byte rightTrigger = 0x00;
         public short rightStickX = 0x0000;
@@ -3175,6 +3213,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 pushToTalkPressed = false;
                 mainThreadHandler.post(() -> gestures.setPushToTalkPressed(false));
             }
+            controllerKeyboardPressed = false;
         }
 
         public void sendControllerArrival() {}
