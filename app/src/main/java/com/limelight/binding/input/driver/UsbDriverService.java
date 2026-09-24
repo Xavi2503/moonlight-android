@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
+import android.hardware.usb.UsbEndpoint;
+import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.os.Binder;
 import android.os.Build;
@@ -151,7 +153,46 @@ public class UsbDriverService extends Service implements UsbDriverListener {
         }
     }
 
+    private void reportKishiUsbInterfaceDiagnostics(UsbDevice device) {
+        if (device.getVendorId() != 0x1532 || device.getProductId() != 0x0037 || listener == null) {
+            return;
+        }
+
+        listener.reportControllerRawDiagnostic(-1,
+                String.format("KISHI USB | VID:PID=%04X:%04X | interfaces=%d",
+                        device.getVendorId(), device.getProductId(), device.getInterfaceCount()));
+
+        for (int i = 0; i < device.getInterfaceCount(); i++) {
+            UsbInterface iface = device.getInterface(i);
+            StringBuilder endpoints = new StringBuilder();
+
+            for (int e = 0; e < iface.getEndpointCount(); e++) {
+                UsbEndpoint ep = iface.getEndpoint(e);
+                if (endpoints.length() > 0) {
+                    endpoints.append(" ");
+                }
+
+                endpoints.append(String.format("[%02X dir=%d type=%d max=%d]",
+                        ep.getAddress(),
+                        ep.getDirection(),
+                        ep.getType(),
+                        ep.getMaxPacketSize()));
+            }
+
+            listener.reportControllerRawDiagnostic(-1,
+                    String.format("KISHI IF%d | class=%02X sub=%02X proto=%02X | eps=%d %s",
+                            i,
+                            iface.getInterfaceClass(),
+                            iface.getInterfaceSubclass(),
+                            iface.getInterfaceProtocol(),
+                            iface.getEndpointCount(),
+                            endpoints.toString()));
+        }
+    }
+
     private void handleUsbDeviceState(UsbDevice device) {
+        reportKishiUsbInterfaceDiagnostics(device);
+
         // Are we able to operate it?
         if (shouldClaimDevice(device, prefConfig.bindAllUsb)) {
             // Do we have permission yet?
