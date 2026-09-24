@@ -142,9 +142,7 @@ public class XboxOneController extends AbstractXboxController {
             }
 
             lastDiagnosticSignature = signature;
-            listener.reportControllerRawDiagnostic(
-                    getControllerId(),
-                    String.format("KISHI XINPUT 20 | buttons=%02X %02X | len=%d | extra=%s",
+            reportRawDiagnostic(String.format("KISHI XINPUT 20 | buttons=%02X %02X | len=%d | extra=%s",
                             buttons1, buttons2, length,
                             extras.length() == 0 ? "-" : extras.toString()));
         }
@@ -163,9 +161,7 @@ public class XboxOneController extends AbstractXboxController {
             }
 
             lastDiagnosticSignature = signature;
-            listener.reportControllerRawDiagnostic(
-                    getControllerId(),
-                    String.format("KISHI XINPUT RAW | type=%02X | len=%d | %s",
+            reportRawDiagnostic(String.format("KISHI XINPUT RAW | type=%02X | len=%d | %s",
                             reportType, length, raw.toString()));
         }
     }
