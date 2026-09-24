@@ -73,7 +73,7 @@ public class Xbox360Controller extends AbstractXboxController {
         }
     }
     private void reportRazerRawDiagnostic(ByteBuffer buffer) {
-        if (device.getVendorId() != 0x1532 || buffer.remaining() < 4) {
+        if (buffer.remaining() < 4) {
             return;
         }
 
@@ -100,7 +100,8 @@ public class Xbox360Controller extends AbstractXboxController {
         }
 
         lastDiagnosticSignature = signature;
-        reportRawDiagnostic(String.format("KISHI XINPUT 360 | buttons=%02X %02X | len=%d | extra=%s",
+        reportRawDiagnostic(String.format("XINPUT 360 | VID:PID=%04X:%04X | buttons=%02X %02X | len=%d | extra=%s",
+                        device.getVendorId(), device.getProductId(),
                         buttons1, buttons2, length,
                         extras.length() == 0 ? "-" : extras.toString()));
     }
