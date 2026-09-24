@@ -3008,6 +3008,20 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
     }
 
     @Override
+    public void reportControllerRawDiagnostic(int controllerId, String report) {
+        LimeLog.info(report);
+
+        // Keep the diagnostic useful on-screen: ignore the ordinary all-buttons-released
+        // XInput report, but still show non-standard/vendor reports.
+        if (report.contains("KISHI XINPUT 20") && report.contains("buttons=00 00")) {
+            return;
+        }
+
+        mainThreadHandler.post(() ->
+                Toast.makeText(activityContext, report, Toast.LENGTH_LONG).show());
+    }
+
+    @Override
     public void reportControllerState(int controllerId, int buttonFlags,
                                       float leftStickX, float leftStickY,
                                       float rightStickX, float rightStickY,
