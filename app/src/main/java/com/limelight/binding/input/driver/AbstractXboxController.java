@@ -21,6 +21,10 @@ public abstract class AbstractXboxController extends AbstractController {
     private Thread inputThread;
     private boolean stopped;
 
+    private boolean isKishiV3ProXl() {
+        return device.getVendorId() == 0x1532 && device.getProductId() == 0x0037;
+    }
+
     protected UsbEndpoint inEndpt, outEndpt;
 
     public AbstractXboxController(UsbDevice device, UsbDeviceConnection connection, int deviceId, UsbDriverListener listener) {
@@ -97,12 +101,17 @@ public abstract class AbstractXboxController extends AbstractController {
     }
 
     public boolean start() {
-        // Force claim all interfaces
-        for (int i = 0; i < device.getInterfaceCount(); i++) {
+        // Most Xbox devices are claimed completely so the kernel driver does not
+        // compete with Moonlight. The Kishi V3 Pro XL is a composite device:
+        // interface 0 is Xbox/XInput, while the remaining HID interfaces may expose
+        // its extra M1/M2/L4/R4 controls. Keep those auxiliary interfaces attached
+        // to Android so they can still generate independent KeyEvents.
+        int interfacesToClaim = isKishiV3ProXl() ? 1 : device.getInterfaceCount();
+        for (int i = 0; i < interfacesToClaim; i++) {
             UsbInterface iface = device.getInterface(i);
 
             if (!connection.claimInterface(iface, true)) {
-                LimeLog.warning("Failed to claim interfaces");
+                LimeLog.warning("Failed to claim interface "+i);
                 return false;
             }
         }
@@ -160,14 +169,13 @@ public abstract class AbstractXboxController extends AbstractController {
             inputThread.interrupt();
             inputThread = null;
         }
-
-
-        // Release all interfaces
-        for (int i = 0; i < device.getInterfaceCount(); i++) {
+        // Release only the interfaces we actually claimed.
+        int interfacesToRelease = isKishiV3ProXl() ? 1 : device.getInterfaceCount();
+        for (int i = 0; i < interfacesToRelease; i++) {
             UsbInterface iface = device.getInterface(i);
 
             if (!connection.releaseInterface(iface)) {
-                LimeLog.warning("Failed to release interfaces");
+                LimeLog.warning("Failed to release interface "+i);
             }
         }
 
