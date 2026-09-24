@@ -5,6 +5,7 @@ import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
+import android.hardware.usb.UsbRequest;
 
 import com.limelight.LimeLog;
 import com.limelight.nvstream.input.ControllerPacket;
@@ -15,7 +16,8 @@ import java.util.List;
 
 public class Xbox360Controller extends AbstractXboxController {
     private String lastDiagnosticSignature = "";
-    private final List<Thread> kishiAuxDiagnosticThreads = new ArrayList<>();
+    private final List<UsbRequest> kishiAuxDiagnosticRequests = new ArrayList<>();
+    private Thread kishiAuxDiagnosticThread;
     private volatile boolean kishiAuxDiagnosticsRunning;
 
     private static final int XB360_IFACE_SUBCLASS = 93;
@@ -52,12 +54,26 @@ public class Xbox360Controller extends AbstractXboxController {
             0x3537,//小鸡启明星6300固件
     };
 
+    private static class KishiAuxRequestInfo {
+        final int interfaceIndex;
+        final UsbEndpoint endpoint;
+        final ByteBuffer buffer;
+        String lastReport = "";
+
+        KishiAuxRequestInfo(int interfaceIndex, UsbEndpoint endpoint) {
+            this.interfaceIndex = interfaceIndex;
+            this.endpoint = endpoint;
+            this.buffer = ByteBuffer.allocateDirect(Math.max(64, endpoint.getMaxPacketSize()));
+        }
+    }
+
     private void startKishiAuxDiagnostics() {
         if (device.getVendorId() != 0x1532 || device.getProductId() != 0x0037) {
             return;
         }
 
         kishiAuxDiagnosticsRunning = true;
+        kishiAuxDiagnosticRequests.clear();
 
         for (int interfaceIndex = 1; interfaceIndex < device.getInterfaceCount(); interfaceIndex++) {
             UsbInterface iface = device.getInterface(interfaceIndex);
@@ -65,64 +81,107 @@ public class Xbox360Controller extends AbstractXboxController {
             for (int endpointIndex = 0; endpointIndex < iface.getEndpointCount(); endpointIndex++) {
                 UsbEndpoint endpoint = iface.getEndpoint(endpointIndex);
 
-                if (endpoint.getDirection() != UsbConstants.USB_DIR_IN) {
+                if (endpoint.getDirection() != UsbConstants.USB_DIR_IN ||
+                        endpoint.getType() != UsbConstants.USB_ENDPOINT_XFER_INT) {
                     continue;
                 }
 
-                final int diagnosticInterface = interfaceIndex;
-                final UsbEndpoint diagnosticEndpoint = endpoint;
+                UsbRequest request = new UsbRequest();
+                if (!request.initialize(connection, endpoint)) {
+                    reportRawDiagnostic(String.format(
+                            "KISHI AUX INIT FAIL IF%d EP%02X",
+                            interfaceIndex, endpoint.getAddress()));
+                    request.close();
+                    continue;
+                }
 
-                Thread thread = new Thread(() -> {
-                    byte[] buffer = new byte[Math.max(64, diagnosticEndpoint.getMaxPacketSize())];
-                    String lastReport = "";
+                KishiAuxRequestInfo info = new KishiAuxRequestInfo(interfaceIndex, endpoint);
+                request.setClientData(info);
 
-                    while (kishiAuxDiagnosticsRunning && !Thread.currentThread().isInterrupted()) {
-                        int result = connection.bulkTransfer(
-                                diagnosticEndpoint,
-                                buffer,
-                                buffer.length,
-                                500);
+                if (!request.queue(info.buffer)) {
+                    reportRawDiagnostic(String.format(
+                            "KISHI AUX QUEUE FAIL IF%d EP%02X",
+                            interfaceIndex, endpoint.getAddress()));
+                    request.close();
+                    continue;
+                }
 
-                        if (result <= 0) {
-                            continue;
-                        }
-
-                        StringBuilder hex = new StringBuilder();
-                        for (int i = 0; i < result; i++) {
-                            if (hex.length() > 0) {
-                                hex.append(' ');
-                            }
-                            hex.append(String.format("%02X", buffer[i] & 0xFF));
-                        }
-
-                        String report = String.format(
-                                "KISHI AUX IF%d EP%02X | len=%d | %s",
-                                diagnosticInterface,
-                                diagnosticEndpoint.getAddress(),
-                                result,
-                                hex.toString());
-
-                        if (!report.equals(lastReport)) {
-                            lastReport = report;
-                            reportRawDiagnostic(report);
-                        }
-                    }
-                }, String.format("KishiAux-%02X", diagnosticEndpoint.getAddress()));
-
-                kishiAuxDiagnosticThreads.add(thread);
-                thread.start();
+                kishiAuxDiagnosticRequests.add(request);
             }
         }
+
+        reportRawDiagnostic(String.format(
+                "KISHI AUX READY | interrupt endpoints=%d",
+                kishiAuxDiagnosticRequests.size()));
+
+        kishiAuxDiagnosticThread = new Thread(() -> {
+            while (kishiAuxDiagnosticsRunning && !Thread.currentThread().isInterrupted()) {
+                UsbRequest completed = connection.requestWait();
+                if (completed == null) {
+                    if (kishiAuxDiagnosticsRunning) {
+                        reportRawDiagnostic("KISHI AUX requestWait returned null");
+                    }
+                    break;
+                }
+
+                Object clientData = completed.getClientData();
+                if (!(clientData instanceof KishiAuxRequestInfo)) {
+                    continue;
+                }
+
+                KishiAuxRequestInfo info = (KishiAuxRequestInfo) clientData;
+                int result = info.buffer.position();
+                info.buffer.flip();
+
+                StringBuilder hex = new StringBuilder();
+                while (info.buffer.hasRemaining()) {
+                    if (hex.length() > 0) {
+                        hex.append(' ');
+                    }
+                    hex.append(String.format("%02X", info.buffer.get() & 0xFF));
+                }
+
+                String report = String.format(
+                        "KISHI AUX IF%d EP%02X | len=%d | %s",
+                        info.interfaceIndex,
+                        info.endpoint.getAddress(),
+                        result,
+                        hex.toString());
+
+                if (!report.equals(info.lastReport)) {
+                    info.lastReport = report;
+                    reportRawDiagnostic(report);
+                }
+
+                info.buffer.clear();
+                if (kishiAuxDiagnosticsRunning && !completed.queue(info.buffer)) {
+                    reportRawDiagnostic(String.format(
+                            "KISHI AUX REQUEUE FAIL IF%d EP%02X",
+                            info.interfaceIndex, info.endpoint.getAddress()));
+                    break;
+                }
+            }
+        }, "KishiAuxInterruptReader");
+
+        kishiAuxDiagnosticThread.start();
     }
 
     private void stopKishiAuxDiagnostics() {
         kishiAuxDiagnosticsRunning = false;
 
-        for (Thread thread : kishiAuxDiagnosticThreads) {
-            thread.interrupt();
+        for (UsbRequest request : kishiAuxDiagnosticRequests) {
+            request.cancel();
         }
 
-        kishiAuxDiagnosticThreads.clear();
+        if (kishiAuxDiagnosticThread != null) {
+            kishiAuxDiagnosticThread.interrupt();
+            kishiAuxDiagnosticThread = null;
+        }
+
+        for (UsbRequest request : kishiAuxDiagnosticRequests) {
+            request.close();
+        }
+        kishiAuxDiagnosticRequests.clear();
     }
 
     @Override
