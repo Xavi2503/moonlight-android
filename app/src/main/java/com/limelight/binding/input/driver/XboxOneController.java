@@ -111,7 +111,7 @@ public class XboxOneController extends AbstractXboxController {
         connection.bulkTransfer(outEndpt, payload, payload.length, 3000);
     }
     private void reportRazerRawDiagnostic(ByteBuffer buffer) {
-        if (device.getVendorId() != 0x1532 || buffer.remaining() <= 0) {
+        if (buffer.remaining() <= 0) {
             return;
         }
 
@@ -142,7 +142,8 @@ public class XboxOneController extends AbstractXboxController {
             }
 
             lastDiagnosticSignature = signature;
-            reportRawDiagnostic(String.format("KISHI XINPUT 20 | buttons=%02X %02X | len=%d | extra=%s",
+            reportRawDiagnostic(String.format("XINPUT 20 | VID:PID=%04X:%04X | buttons=%02X %02X | len=%d | extra=%s",
+                            device.getVendorId(), device.getProductId(),
                             buttons1, buttons2, length,
                             extras.length() == 0 ? "-" : extras.toString()));
         }
@@ -161,7 +162,8 @@ public class XboxOneController extends AbstractXboxController {
             }
 
             lastDiagnosticSignature = signature;
-            reportRawDiagnostic(String.format("KISHI XINPUT RAW | type=%02X | len=%d | %s",
+            reportRawDiagnostic(String.format("XINPUT RAW | VID:PID=%04X:%04X | type=%02X | len=%d | %s",
+                            device.getVendorId(), device.getProductId(),
                             reportType, length, raw.toString()));
         }
     }
