@@ -465,10 +465,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         streamContainer.setOnKeyListener(this);
         streamContainer.setInputCallbacks(this);
         streamContainer.setCommitTextEnabled(prefConfig.enableCommitText);
-        // StreamContainer wraps the actual SurfaceView/GLSurfaceView. Attach the
-        // touch listener to the rendered surface so multi-finger gestures reach
-        // Game.handleMotionEvent() instead of being lost inside the container.
-        streamContainer.getSurfaceView().setOnTouchListener(this);
 
         rootView = streamContainer.getParent();
 
@@ -2045,6 +2041,30 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 event.getScanCode() == prefConfig.pushToTalkControllerScanCode;
     }
 
+    private boolean matchesControllerKeyboardButton(KeyEvent event) {
+        if (prefConfig == null || !prefConfig.enableControllerKeyboard) {
+            return false;
+        }
+
+        if (prefConfig.controllerKeyboardKeyCode != 0 &&
+                prefConfig.controllerKeyboardKeyCode != KeyEvent.KEYCODE_UNKNOWN &&
+                event.getKeyCode() == prefConfig.controllerKeyboardKeyCode) {
+            return true;
+        }
+
+        return prefConfig.controllerKeyboardScanCode != 0 &&
+                event.getScanCode() == prefConfig.controllerKeyboardScanCode;
+    }
+
+    private void toggleConfiguredControllerKeyboard() {
+        if (prefConfig != null && "artemis".equals(prefConfig.controllerKeyboardType)) {
+            toggleFullKeyboard();
+        }
+        else {
+            toggleKeyboard();
+        }
+    }
+
     private int getPushToTalkHostAndroidKeyCode() {
         String configured = prefConfig != null ? prefConfig.pushToTalkHostKey : null;
         if (configured == null || configured.trim().length() != 1) {
@@ -2101,6 +2121,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         if (matchesPushToTalkButton(event)) {
             if (event.getRepeatCount() == 0) {
                 setPushToTalkPressed(true);
+            }
+            return true;
+        }
+
+        if (matchesControllerKeyboardButton(event)) {
+            if (event.getRepeatCount() == 0) {
+                toggleConfiguredControllerKeyboard();
             }
             return true;
         }
@@ -2198,6 +2225,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         if (matchesPushToTalkButton(event)) {
             setPushToTalkPressed(false);
+            return true;
+        }
+
+        if (matchesControllerKeyboardButton(event)) {
             return true;
         }
 
@@ -3479,50 +3510,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     @Override
     public boolean onGenericMotion(View view, MotionEvent event) {
         return handleMotionEvent(view, event);
-    }
-
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent event) {
-        if (prefConfig != null && prefConfig.enableMultiTouchGestures) {
-            int action = event.getActionMasked();
-            int pointerCount = event.getPointerCount();
-
-            if (action == MotionEvent.ACTION_POINTER_DOWN) {
-                if (pointerCount == 4) {
-                    threeFingerDownTime = 0;
-                    fourFingerDownTime = event.getEventTime();
-                }
-                else if (pointerCount == 5) {
-                    threeFingerDownTime = 0;
-                    fourFingerDownTime = 0;
-                    fiveFingerDownTime = event.getEventTime();
-                }
-            }
-            else if (action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_UP) {
-                long now = event.getEventTime();
-
-                if (pointerCount >= 5 && fiveFingerDownTime > 0 &&
-                        now - fiveFingerDownTime < FIVE_FINGER_TAP_THRESHOLD) {
-                    fiveFingerDownTime = 0;
-                    fourFingerDownTime = 0;
-                    threeFingerDownTime = 0;
-                    if (prefConfig.enableBackMenu) {
-                        showGameMenu(null);
-                    }
-                    return true;
-                }
-
-                if (pointerCount == 4 && fourFingerDownTime > 0 &&
-                        now - fourFingerDownTime < FOUR_FINGER_TAP_THRESHOLD) {
-                    fourFingerDownTime = 0;
-                    threeFingerDownTime = 0;
-                    toggleKeyboard();
-                    return true;
-                }
-            }
-        }
-
-        return super.dispatchTouchEvent(event);
     }
 
     @SuppressLint("ClickableViewAccessibility")
