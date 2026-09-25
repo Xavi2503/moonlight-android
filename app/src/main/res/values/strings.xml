@@ -271,7 +271,7 @@
     <string name="title_enable_rumble">Enable Rumble</string>
     <string name="summary_enable_rumble">Enable rumble feedback on supported gamepads.</string>
     <string name="title_kishi_sensa_rumble_strength">Kishi Sensa rumble strength</string>
-    <string name="summary_kishi_sensa_rumble_strength">Amplify or reduce Sensa rumble. 100% keeps the original game strength; values above 100% boost weaker effects.</string>
+    <string name="summary_kishi_sensa_rumble_strength">Amplify or reduce Sensa rumble. 100% keeps the original game strength; up to 400% pushes weaker effects closer to the controller's physical maximum.</string>
     <string name="title_enable_push_to_talk">Controller push-to-talk</string>
     <string name="summary_enable_push_to_talk">Convert one controller button into a keyboard push-to-talk key while streaming</string>
     <string name="title_push_to_talk_host_key">Push-to-talk key on PC</string>
