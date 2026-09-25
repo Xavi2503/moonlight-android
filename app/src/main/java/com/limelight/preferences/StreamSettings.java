@@ -1322,21 +1322,6 @@ public class StreamSettings extends AppCompatActivity {
             String selectedValue = getPrefs().getString(
                     PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, "0");
 
-            // Build #81 briefly stored Bluetooth as the semantic ID -100.
-            // The proven microphone implementation uses Android's current direct
-            // device ID, so migrate that one transitional value back automatically.
-            if (Integer.toString(MicrophoneCaptureManager.DEVICE_ID_BLUETOOTH_HEADSET).equals(selectedValue)) {
-                for (MicrophoneCaptureManager.InputDeviceEntry deviceEntry : deviceEntries) {
-                    if (deviceEntry.label.startsWith("Bluetooth headset microphone") ||
-                            deviceEntry.label.startsWith("Bluetooth LE Audio headset microphone")) {
-                        selectedValue = Integer.toString(deviceEntry.id);
-                        getPrefs().edit()
-                                .putString(PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, selectedValue)
-                                .apply();
-                        break;
-                    }
-                }
-            }
 
             boolean hasSelectedDevice = "0".equals(selectedValue);
 
