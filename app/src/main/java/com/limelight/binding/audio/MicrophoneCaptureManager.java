@@ -199,19 +199,16 @@ public class MicrophoneCaptureManager {
         }
 
         if (preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
-            // Bluetooth microphone capture on modern Android is a communication
-            // route. Activate it before resolving the transient AudioDeviceInfo ID.
-            // If the route API is unavailable/rejected, still try direct selection
-            // because some ROMs expose the headset input without it.
-            boolean routeActivated = activateBluetoothCommunicationRoute();
+            // Resolve the current transient Android ID but keep the headset on its
+            // normal high-quality playback path. Direct AudioRecord routing worked
+            // on this device without switching the whole headset into call/SCO mode.
             AudioDeviceInfo bluetoothInput = waitForBluetoothInputDevice();
             if (bluetoothInput != null) {
                 preferredDeviceId = bluetoothInput.getId();
-                LimeLog.info("Resolved Bluetooth microphone to current device ID " +
-                        preferredDeviceId + " (communicationRoute=" + routeActivated + ")");
+                LimeLog.info("Resolved stable Bluetooth microphone selection to direct device ID " +
+                        preferredDeviceId);
             }
             else {
-                deactivateCommunicationRoute();
                 dispatchStatus(string(R.string.microphone_preview_selected_missing), 0.0, false);
                 return false;
             }
@@ -357,15 +354,6 @@ public class MicrophoneCaptureManager {
         }
 
         boolean directBluetooth = preferredDevice != null && isBluetoothHeadsetDevice(preferredDevice);
-        if (directBluetooth && !communicationRouteActive) {
-            boolean routeActivated = activateBluetoothCommunicationRoute();
-            AudioDeviceInfo routedBluetoothInput = waitForBluetoothInputDevice();
-            if (routedBluetoothInput != null) {
-                preferredDevice = routedBluetoothInput;
-                preferredDeviceLabel = describeDevice(preferredDevice);
-            }
-            LimeLog.info("Bluetooth microphone communication route active=" + routeActivated);
-        }
 
         int[] preferredSources = directBluetooth ?
                 new int[] {
