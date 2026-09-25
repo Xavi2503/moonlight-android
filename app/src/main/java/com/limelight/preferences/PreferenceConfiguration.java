@@ -974,7 +974,7 @@ private static int getFramePacingValue(Context context) {
         config.vibrateOsc = prefs.getBoolean(VIBRATE_OSC_PREF_STRING, DEFAULT_VIBRATE_OSC);
         config.vibrateFallbackToDevice = prefs.getBoolean(VIBRATE_FALLBACK_PREF_STRING, DEFAULT_VIBRATE_FALLBACK);
         config.vibrateFallbackToDeviceStrength = prefs.getInt(VIBRATE_FALLBACK_STRENGTH_PREF_STRING, DEFAULT_VIBRATE_FALLBACK_STRENGTH);
-        config.kishiSensaRumbleStrength = Math.max(0, Math.min(200,
+        config.kishiSensaRumbleStrength = Math.max(0, Math.min(400,
                 prefs.getInt(KISHI_SENSA_RUMBLE_STRENGTH_PREF_STRING, DEFAULT_KISHI_SENSA_RUMBLE_STRENGTH)));
         config.flipFaceButtons = prefs.getBoolean(FLIP_FACE_BUTTONS_PREF_STRING, DEFAULT_FLIP_FACE_BUTTONS);
 //        config.touchscreenTrackpad = prefs.getBoolean(TOUCHSCREEN_TRACKPAD_PREF_STRING, DEFAULT_TOUCHSCREEN_TRACKPAD);
