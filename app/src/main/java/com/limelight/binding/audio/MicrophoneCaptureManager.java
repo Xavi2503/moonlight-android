@@ -106,6 +106,26 @@ public class MicrophoneCaptureManager {
         return new ArrayList<>(uniqueEntries.values());
     }
 
+    public static int normalizePreferredDeviceId(Context context, int preferredDeviceId) {
+        if (preferredDeviceId == 0 || preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET ||
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return preferredDeviceId;
+        }
+
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) {
+            return preferredDeviceId;
+        }
+
+        for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+            if (deviceInfo.getId() == preferredDeviceId && isBluetoothHeadsetDevice(deviceInfo)) {
+                return DEVICE_ID_BLUETOOTH_HEADSET;
+            }
+        }
+
+        return preferredDeviceId;
+    }
+
     public boolean startPreview(int preferredDeviceId, LevelListener listener) {
         return startCapture(preferredDeviceId, listener, false);
     }
