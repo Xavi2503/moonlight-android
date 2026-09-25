@@ -96,22 +96,26 @@ public class MicrophoneCaptureManager {
         for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             String label = describeDevice(deviceInfo);
             int entryId = deviceInfo.getId();
+
             if (isBluetoothHeadsetDevice(deviceInfo)) {
+                // Bluetooth headset microphones are communication devices. Store a
+                // semantic ID instead of Android's transient device ID so capture
+                // can establish the HFP/communication route before opening AudioRecord.
+                entryId = DEVICE_ID_BLUETOOTH_HEADSET;
                 bluetoothFound = true;
             }
+
             if (!uniqueEntries.containsKey(label)) {
                 uniqueEntries.put(label, new InputDeviceEntry(entryId, label));
             }
         }
 
-        // Keep the proven direct capture path, but be less dependent on Android's
-        // GET_DEVICES_INPUTS snapshot. Some Android builds expose the Bluetooth
-        // source through GET_DEVICES_ALL (or the communication-device list) first.
         if (!bluetoothFound) {
             for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_ALL)) {
                 if (deviceInfo.isSource() && isBluetoothHeadsetDevice(deviceInfo)) {
                     String label = describeDevice(deviceInfo);
-                    uniqueEntries.put(label, new InputDeviceEntry(deviceInfo.getId(), label));
+                    uniqueEntries.put(label,
+                            new InputDeviceEntry(DEVICE_ID_BLUETOOTH_HEADSET, label));
                     bluetoothFound = true;
                     break;
                 }
@@ -121,15 +125,18 @@ public class MicrophoneCaptureManager {
         if (!bluetoothFound && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             try {
                 for (AudioDeviceInfo deviceInfo : audioManager.getAvailableCommunicationDevices()) {
-                    if (deviceInfo.isSource() && isBluetoothHeadsetDevice(deviceInfo)) {
-                        String label = describeDevice(deviceInfo);
-                        uniqueEntries.put(label, new InputDeviceEntry(deviceInfo.getId(), label));
+                    if (isBluetoothHeadsetDevice(deviceInfo)) {
+                        String label = deviceInfo.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET ?
+                                "Bluetooth LE Audio headset microphone" :
+                                "Bluetooth headset microphone";
+                        uniqueEntries.put(label,
+                                new InputDeviceEntry(DEVICE_ID_BLUETOOTH_HEADSET, label));
                         break;
                     }
                 }
             }
             catch (SecurityException | IllegalStateException e) {
-                LimeLog.warning("Unable to enumerate Bluetooth microphone candidates: " +
+                LimeLog.warning("Unable to enumerate Bluetooth communication devices: " +
                         e.getMessage());
             }
         }
@@ -209,14 +216,27 @@ public class MicrophoneCaptureManager {
             return false;
         }
 
-        if (preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
-            AudioDeviceInfo bluetoothInput = findBluetoothInputDevice();
+        boolean bluetoothRequested =
+                preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET ||
+                isBluetoothDeviceId(preferredDeviceId);
+
+        if (bluetoothRequested) {
+            // WH-CH720N and Evolve2 65 expose their microphones through the
+            // Bluetooth HFP/HSP communication path. Merely calling
+            // AudioRecord.setPreferredDevice() while A2DP is active can leave us
+            // with a selectable device that delivers silence. Establish the same
+            // Android communication route used by voice/calling apps first.
+            boolean routeActivated = activateBluetoothCommunicationRoute();
+            LimeLog.info("Bluetooth microphone communication route active=" + routeActivated);
+
+            AudioDeviceInfo bluetoothInput = waitForBluetoothInputDevice();
             if (bluetoothInput != null) {
                 preferredDeviceId = bluetoothInput.getId();
-                LimeLog.info("Migrated legacy Bluetooth microphone selection to direct device ID " +
+                LimeLog.info("Resolved active Bluetooth microphone input to device ID " +
                         preferredDeviceId);
             }
             else {
+                deactivateCommunicationRoute();
                 dispatchStatus(string(R.string.microphone_preview_selected_missing), 0.0, false);
                 return false;
             }
@@ -364,6 +384,7 @@ public class MicrophoneCaptureManager {
         boolean directBluetooth = preferredDevice != null && isBluetoothHeadsetDevice(preferredDevice);
         int[] preferredSources = directBluetooth ?
                 new int[] {
+                        MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                         MediaRecorder.AudioSource.VOICE_RECOGNITION,
                         MediaRecorder.AudioSource.MIC,
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1
@@ -582,6 +603,39 @@ public class MicrophoneCaptureManager {
         }
 
         return null;
+    }
+
+    private boolean isBluetoothDeviceId(int deviceId) {
+        if (deviceId == 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return false;
+        }
+
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) {
+            return false;
+        }
+
+        for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_ALL)) {
+            if (deviceInfo.getId() == deviceId && isBluetoothHeadsetDevice(deviceInfo)) {
+                return true;
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                for (AudioDeviceInfo deviceInfo : audioManager.getAvailableCommunicationDevices()) {
+                    if (deviceInfo.getId() == deviceId && isBluetoothHeadsetDevice(deviceInfo)) {
+                        return true;
+                    }
+                }
+            }
+            catch (SecurityException | IllegalStateException e) {
+                LimeLog.warning("Unable to inspect Bluetooth communication device: " +
+                        e.getMessage());
+            }
+        }
+
+        return false;
     }
 
     private AudioDeviceInfo findInputDevice(int deviceId) {
