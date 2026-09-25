@@ -235,7 +235,7 @@ public class UsbDriverService extends Service implements UsbDriverListener {
 
             AbstractController controller;
             if (RazerKishiHapticsController.canClaimDevice(device)) {
-                controller = new RazerKishiHapticsController(device, connection, nextDeviceId++, this);
+                controller = new RazerKishiHapticsController(device, connection, nextDeviceId++, this, prefConfig.kishiSensaRumbleStrength);
             }
             else if (XboxOneController.canClaimDevice(device)) {
                 controller = new XboxOneController(device, connection, nextDeviceId++, this);
