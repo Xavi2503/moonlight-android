@@ -93,37 +93,13 @@ public class MicrophoneCaptureManager {
 
         for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             String label = describeDevice(deviceInfo);
-            // Android may assign a different numeric device ID after a Bluetooth
-            // headset reconnects. Store a semantic Bluetooth selection instead so
-            // the configured headset microphone survives reconnects and app updates.
-            int entryId = isBluetoothHeadsetDevice(deviceInfo) ?
-                    DEVICE_ID_BLUETOOTH_HEADSET : deviceInfo.getId();
+            int entryId = deviceInfo.getId();
             if (!uniqueEntries.containsKey(label)) {
                 uniqueEntries.put(label, new InputDeviceEntry(entryId, label));
             }
         }
 
         return new ArrayList<>(uniqueEntries.values());
-    }
-
-    public static int normalizePreferredDeviceId(Context context, int preferredDeviceId) {
-        if (preferredDeviceId == 0 || preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET ||
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return preferredDeviceId;
-        }
-
-        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        if (audioManager == null) {
-            return preferredDeviceId;
-        }
-
-        for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
-            if (deviceInfo.getId() == preferredDeviceId && isBluetoothHeadsetDevice(deviceInfo)) {
-                return DEVICE_ID_BLUETOOTH_HEADSET;
-            }
-        }
-
-        return preferredDeviceId;
     }
 
     public boolean startPreview(int preferredDeviceId, LevelListener listener) {
@@ -199,13 +175,10 @@ public class MicrophoneCaptureManager {
         }
 
         if (preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
-            // Resolve the current transient Android ID but keep the headset on its
-            // normal high-quality playback path. Direct AudioRecord routing worked
-            // on this device without switching the whole headset into call/SCO mode.
-            AudioDeviceInfo bluetoothInput = waitForBluetoothInputDevice();
+            AudioDeviceInfo bluetoothInput = findBluetoothInputDevice();
             if (bluetoothInput != null) {
                 preferredDeviceId = bluetoothInput.getId();
-                LimeLog.info("Resolved stable Bluetooth microphone selection to direct device ID " +
+                LimeLog.info("Migrated legacy Bluetooth microphone selection to direct device ID " +
                         preferredDeviceId);
             }
             else {
@@ -354,7 +327,6 @@ public class MicrophoneCaptureManager {
         }
 
         boolean directBluetooth = preferredDevice != null && isBluetoothHeadsetDevice(preferredDevice);
-
         int[] preferredSources = directBluetooth ?
                 new int[] {
                         MediaRecorder.AudioSource.VOICE_RECOGNITION,
