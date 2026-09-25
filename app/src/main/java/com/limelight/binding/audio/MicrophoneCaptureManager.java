@@ -93,7 +93,11 @@ public class MicrophoneCaptureManager {
 
         for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             String label = describeDevice(deviceInfo);
-            int entryId = deviceInfo.getId();
+            // Android may assign a different numeric device ID after a Bluetooth
+            // headset reconnects. Store a semantic Bluetooth selection instead so
+            // the configured headset microphone survives reconnects and app updates.
+            int entryId = isBluetoothHeadsetDevice(deviceInfo) ?
+                    DEVICE_ID_BLUETOOTH_HEADSET : deviceInfo.getId();
             if (!uniqueEntries.containsKey(label)) {
                 uniqueEntries.put(label, new InputDeviceEntry(entryId, label));
             }
@@ -175,13 +179,19 @@ public class MicrophoneCaptureManager {
         }
 
         if (preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
-            AudioDeviceInfo bluetoothInput = findBluetoothInputDevice();
+            // Bluetooth microphone capture on modern Android is a communication
+            // route. Activate it before resolving the transient AudioDeviceInfo ID.
+            // If the route API is unavailable/rejected, still try direct selection
+            // because some ROMs expose the headset input without it.
+            boolean routeActivated = activateBluetoothCommunicationRoute();
+            AudioDeviceInfo bluetoothInput = waitForBluetoothInputDevice();
             if (bluetoothInput != null) {
                 preferredDeviceId = bluetoothInput.getId();
-                LimeLog.info("Migrated legacy Bluetooth microphone selection to direct device ID " +
-                        preferredDeviceId);
+                LimeLog.info("Resolved Bluetooth microphone to current device ID " +
+                        preferredDeviceId + " (communicationRoute=" + routeActivated + ")");
             }
             else {
+                deactivateCommunicationRoute();
                 dispatchStatus(string(R.string.microphone_preview_selected_missing), 0.0, false);
                 return false;
             }
@@ -327,6 +337,16 @@ public class MicrophoneCaptureManager {
         }
 
         boolean directBluetooth = preferredDevice != null && isBluetoothHeadsetDevice(preferredDevice);
+        if (directBluetooth && !communicationRouteActive) {
+            boolean routeActivated = activateBluetoothCommunicationRoute();
+            AudioDeviceInfo routedBluetoothInput = waitForBluetoothInputDevice();
+            if (routedBluetoothInput != null) {
+                preferredDevice = routedBluetoothInput;
+                preferredDeviceLabel = describeDevice(preferredDevice);
+            }
+            LimeLog.info("Bluetooth microphone communication route active=" + routeActivated);
+        }
+
         int[] preferredSources = directBluetooth ?
                 new int[] {
                         MediaRecorder.AudioSource.VOICE_RECOGNITION,
