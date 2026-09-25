@@ -91,11 +91,39 @@ public class MicrophoneCaptureManager {
             return new ArrayList<>();
         }
 
+        boolean bluetoothInputPresent = false;
         for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             String label = describeDevice(deviceInfo);
             int entryId = deviceInfo.getId();
+            if (isBluetoothHeadsetDevice(deviceInfo)) {
+                bluetoothInputPresent = true;
+            }
             if (!uniqueEntries.containsKey(label)) {
                 uniqueEntries.put(label, new InputDeviceEntry(entryId, label));
+            }
+        }
+
+        // Android 12+ can keep a connected Bluetooth headset available for
+        // communication while hiding its microphone from GET_DEVICES_INPUTS until
+        // the communication route is selected. Do not make the microphone vanish
+        // from Artemis in that state. Expose a semantic Bluetooth entry and resolve
+        // the real input device when capture starts.
+        if (!bluetoothInputPresent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                for (AudioDeviceInfo deviceInfo : audioManager.getAvailableCommunicationDevices()) {
+                    if (isBluetoothHeadsetDevice(deviceInfo)) {
+                        String label = deviceInfo.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET ?
+                                "Bluetooth LE Audio headset microphone" :
+                                "Bluetooth headset microphone (connected)";
+                        uniqueEntries.put(label,
+                                new InputDeviceEntry(DEVICE_ID_BLUETOOTH_HEADSET, label));
+                        break;
+                    }
+                }
+            }
+            catch (SecurityException | IllegalStateException e) {
+                LimeLog.warning("Unable to enumerate Bluetooth communication devices: " +
+                        e.getMessage());
             }
         }
 
@@ -176,12 +204,26 @@ public class MicrophoneCaptureManager {
 
         if (preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
             AudioDeviceInfo bluetoothInput = findBluetoothInputDevice();
+
+            if (bluetoothInput == null) {
+                // Some Android versions expose the connected headset only as an
+                // available communication device until its route is selected.
+                // Prefer the proven direct path first; use communication routing
+                // only as a fallback to make the microphone input appear.
+                boolean routeActivated = activateBluetoothCommunicationRoute();
+                if (routeActivated) {
+                    bluetoothInput = waitForBluetoothInputDevice();
+                }
+            }
+
             if (bluetoothInput != null) {
                 preferredDeviceId = bluetoothInput.getId();
-                LimeLog.info("Migrated legacy Bluetooth microphone selection to direct device ID " +
-                        preferredDeviceId);
+                LimeLog.info("Resolved Bluetooth microphone to input device ID " +
+                        preferredDeviceId + " (communicationRoute=" +
+                        communicationRouteActive + ")");
             }
             else {
+                deactivateCommunicationRoute();
                 dispatchStatus(string(R.string.microphone_preview_selected_missing), 0.0, false);
                 return false;
             }
