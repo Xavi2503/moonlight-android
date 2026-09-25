@@ -3474,6 +3474,16 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
                 capabilities |= MoonBridge.LI_CCAP_RUMBLE;
             }
 
+            // The Kishi V3 Pro XL HID input device does not expose its Sensa actuators
+            // through Android's Vibrator API. When our USB companion is enabled, advertise
+            // ordinary rumble to the host so Sunshine actually sends motor commands. The
+            // USB service claims only interface 4; buttons/sticks remain on this InputDevice.
+            if (prefConfig.usbDriver &&
+                    inputDevice.getVendorId() == 0x1532 &&
+                    inputDevice.getProductId() == 0x0727) {
+                capabilities |= MoonBridge.LI_CCAP_RUMBLE;
+            }
+
             // Shield controllers use special APIs for rumble and battery state
             if (sceManager.isRecognizedDevice(inputDevice)) {
                 capabilities |= MoonBridge.LI_CCAP_RUMBLE | MoonBridge.LI_CCAP_BATTERY_STATE;
