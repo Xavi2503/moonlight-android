@@ -134,7 +134,7 @@ public final class RazerKishiHapticsController extends AbstractController {
         super(deviceId, listener, device.getVendorId(), device.getProductId());
         this.device = device;
         this.connection = connection;
-        this.rumbleGain = clamp(rumbleStrengthPercent / 100.0, 0.0, 2.0);
+        this.rumbleGain = clamp(rumbleStrengthPercent / 100.0, 0.0, 4.0);
 
         this.type = MoonBridge.LI_CTYPE_XBOX;
         this.capabilities = MoonBridge.LI_CCAP_RUMBLE;
