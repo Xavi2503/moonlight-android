@@ -1074,9 +1074,15 @@ public class StreamSettings extends AppCompatActivity {
             }
         }        private boolean isKishiV3ProXlInput(KeyEvent event) {
             InputDevice device = event.getDevice();
-            return device != null &&
-                    device.getVendorId() == 0x1532 &&
-                    device.getProductId() == 0x0037;
+            if (device == null || device.getVendorId() != 0x1532) {
+                return false;
+            }
+
+            // The V3 Pro XL uses 0x0037 in XInput mode and 0x0727 in HID mode.
+            // Accept both so M1/M2 and the other auxiliary HID controls can be
+            // learned even when Android exposes them through a non-gamepad source.
+            return device.getProductId() == 0x0037 ||
+                    device.getProductId() == 0x0727;
         }
 
 
