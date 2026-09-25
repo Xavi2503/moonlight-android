@@ -53,6 +53,7 @@ public final class RazerKishiHapticsController extends AbstractController {
 
     private final UsbDevice device;
     private final UsbDeviceConnection connection;
+    private final double rumbleGain;
 
     private UsbInterface sensaInterface;
     private UsbEndpoint sensaOut;
@@ -128,10 +129,12 @@ public final class RazerKishiHapticsController extends AbstractController {
     public RazerKishiHapticsController(UsbDevice device,
                                       UsbDeviceConnection connection,
                                       int deviceId,
-                                      UsbDriverListener listener) {
+                                      UsbDriverListener listener,
+                                      int rumbleStrengthPercent) {
         super(deviceId, listener, device.getVendorId(), device.getProductId());
         this.device = device;
         this.connection = connection;
+        this.rumbleGain = clamp(rumbleStrengthPercent / 100.0, 0.0, 2.0);
 
         this.type = MoonBridge.LI_CTYPE_XBOX;
         this.capabilities = MoonBridge.LI_CCAP_RUMBLE;
@@ -454,8 +457,8 @@ public final class RazerKishiHapticsController extends AbstractController {
 
             try {
                 writeStream(buildRumbleReport(
-                        low / 65535.0,
-                        high / 65535.0));
+                        (low / 65535.0) * rumbleGain,
+                        (high / 65535.0) * rumbleGain));
             }
             catch (Throwable t) {
                 LimeLog.warning("Kishi Sensa output failed: " + t);
