@@ -1321,24 +1321,6 @@ public class StreamSettings extends AppCompatActivity {
 
             String selectedValue = getPrefs().getString(
                     PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, "0");
-
-            // Migrate an older transient Android Bluetooth input ID to our stable
-            // semantic Bluetooth selection while the headset is connected.
-            try {
-                int parsedSelectedId = Integer.parseInt(selectedValue);
-                int normalizedSelectedId = MicrophoneCaptureManager.normalizePreferredDeviceId(
-                        requireContext(), parsedSelectedId);
-                if (normalizedSelectedId != parsedSelectedId) {
-                    selectedValue = Integer.toString(normalizedSelectedId);
-                    getPrefs().edit()
-                            .putString(PreferenceConfiguration.MICROPHONE_DEVICE_PREF_STRING, selectedValue)
-                            .apply();
-                }
-            }
-            catch (NumberFormatException ignored) {
-                selectedValue = "0";
-            }
-
             boolean hasSelectedDevice = "0".equals(selectedValue);
 
             for (int i = 0; i < deviceEntries.size(); i++) {
