@@ -352,6 +352,15 @@
             android:summary="@string/summary_enable_rumble"
             android:title="@string/title_enable_rumble"
             app:iconSpaceReserved="false" />
+        <com.limelight.preferences.SeekBarPreference
+            android:defaultValue="100"
+            android:dependency="checkbox_enable_rumble"
+            android:key="seekbar_kishi_sensa_rumble_strength"
+            android:max="200"
+            android:summary="@string/summary_kishi_sensa_rumble_strength"
+            android:text="@string/suffix_seekbar_vibrate_fallback_strength"
+            android:title="@string/title_kishi_sensa_rumble_strength"
+            app:iconSpaceReserved="false" />
         <CheckBoxPreference
             android:defaultValue="false"
             android:key="checkbox_enable_push_to_talk"
