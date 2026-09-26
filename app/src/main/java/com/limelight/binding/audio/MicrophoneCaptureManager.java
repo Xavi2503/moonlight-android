@@ -79,6 +79,41 @@ public class MicrophoneCaptureManager {
                 PackageManager.PERMISSION_GRANTED;
     }
 
+    public static boolean isBluetoothMicrophoneSelection(Context context, int deviceId) {
+        if (deviceId == DEVICE_ID_BLUETOOTH_HEADSET) {
+            return true;
+        }
+        if (deviceId == 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return false;
+        }
+
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) {
+            return false;
+        }
+
+        for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_ALL)) {
+            if (deviceInfo.getId() == deviceId && isBluetoothHeadsetDevice(deviceInfo)) {
+                return true;
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                for (AudioDeviceInfo deviceInfo : audioManager.getAvailableCommunicationDevices()) {
+                    if (deviceInfo.getId() == deviceId && isBluetoothHeadsetDevice(deviceInfo)) {
+                        return true;
+                    }
+                }
+            }
+            catch (SecurityException | IllegalStateException ignored) {
+            }
+        }
+
+        return false;
+    }
+
+
     public static List<InputDeviceEntry> getAvailableInputDevices(Context context) {
         Map<String, InputDeviceEntry> uniqueEntries = new LinkedHashMap<>();
 
@@ -202,6 +237,7 @@ public class MicrophoneCaptureManager {
         CaptureConfig config;
         AudioRecord newRecord;
         final int bufferSamples;
+        final int captureSampleRate;
 
         stop();
         levelListener = listener;
@@ -217,8 +253,7 @@ public class MicrophoneCaptureManager {
         }
 
         boolean bluetoothRequested =
-                preferredDeviceId == DEVICE_ID_BLUETOOTH_HEADSET ||
-                isBluetoothDeviceId(preferredDeviceId);
+                isBluetoothMicrophoneSelection(context, preferredDeviceId);
 
         if (bluetoothRequested) {
             // WH-CH720N and Evolve2 65 expose their microphones through the
@@ -250,6 +285,7 @@ public class MicrophoneCaptureManager {
 
         newRecord = config.record;
         bufferSamples = config.bufferSamples;
+        captureSampleRate = config.sampleRate;
 
         if (streamToHost && MoonBridge.setupMicrophoneEncoder(SAMPLE_RATE, CHANNEL_COUNT, DEFAULT_BITRATE) != 0) {
             newRecord.release();
@@ -301,14 +337,17 @@ public class MicrophoneCaptureManager {
             MoonBridge.startMicrophoneStreaming();
         }
 
-        captureThread = new Thread(() -> runCaptureLoop(bufferSamples), streamToHost ? "MicStreamCapture" : "MicPreviewCapture");
+        captureThread = new Thread(() -> runCaptureLoop(bufferSamples, captureSampleRate),
+                streamToHost ? "MicStreamCapture" : "MicPreviewCapture");
         captureThread.start();
         dispatchStatus(config.statusMessage, 0.0, false);
         return true;
     }
 
-    private void runCaptureLoop(int bufferSamples) {
+    private void runCaptureLoop(int bufferSamples, int captureSampleRate) {
         short[] readBuffer = new short[bufferSamples];
+        short[] hostBuffer = captureSampleRate == SAMPLE_RATE ?
+                null : new short[bufferSamples * Math.max(1, SAMPLE_RATE / captureSampleRate)];
         int pendingPeak = 0;
         double pendingRms = 0.0;
         long lastUpdateTime = SystemClock.elapsedRealtime();
@@ -336,7 +375,16 @@ public class MicrophoneCaptureManager {
             }
 
             if (streamingToHost) {
-                int queued = MoonBridge.queueMicrophonePcm(readBuffer, samplesRead);
+                short[] pcmToQueue = readBuffer;
+                int samplesToQueue = samplesRead;
+
+                if (captureSampleRate != SAMPLE_RATE) {
+                    samplesToQueue = resampleVoiceToHost(
+                            readBuffer, samplesRead, captureSampleRate, hostBuffer);
+                    pcmToQueue = hostBuffer;
+                }
+
+                int queued = MoonBridge.queueMicrophonePcm(pcmToQueue, samplesToQueue);
                 if (queued < 0) {
                     LimeLog.warning("Failed to queue microphone PCM data for native encoding");
                 }
@@ -358,15 +406,29 @@ public class MicrophoneCaptureManager {
         }
     }
 
-    private CaptureConfig createCaptureConfig(int preferredDeviceId) {
-        int minBufferSizeBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT);
-        if (minBufferSizeBytes <= 0) {
-            minBufferSizeBytes = FRAME_SIZE * 4 * 2;
+    private int resampleVoiceToHost(short[] input, int inputSamples, int inputRate, short[] output) {
+        if (inputRate <= 0 || SAMPLE_RATE % inputRate != 0) {
+            return 0;
         }
-        int bufferSizeBytes = Math.max(minBufferSizeBytes, FRAME_SIZE * 4 * 2);
-        int bufferSamples = Math.max(FRAME_SIZE, bufferSizeBytes / 2);
+
+        int factor = SAMPLE_RATE / inputRate;
+        int out = 0;
+
+        for (int i = 0; i < inputSamples; i++) {
+            int current = input[i];
+            int next = i + 1 < inputSamples ? input[i + 1] : current;
+
+            for (int step = 0; step < factor; step++) {
+                double fraction = (double) step / factor;
+                int sample = (int) Math.round(current + ((next - current) * fraction));
+                output[out++] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, sample));
+            }
+        }
+
+        return out;
+    }
+
+    private CaptureConfig createCaptureConfig(int preferredDeviceId) {
         boolean missingSelectedDevice = false;
         AudioDeviceInfo preferredDevice = null;
         String preferredDeviceLabel = string(R.string.microphone_device_default);
@@ -381,69 +443,93 @@ public class MicrophoneCaptureManager {
             }
         }
 
-        boolean directBluetooth = preferredDevice != null && isBluetoothHeadsetDevice(preferredDevice);
-        int[] preferredSources = directBluetooth ?
+        boolean bluetoothCapture = preferredDevice != null && isBluetoothHeadsetDevice(preferredDevice);
+
+        // HFP/HSP microphones are voice-rate devices. Opening them directly at 48 kHz
+        // can produce severe noise/distortion on some Android Bluetooth stacks.
+        // Prefer 16 kHz wideband HFP, then 8 kHz narrowband as fallback. Non-Bluetooth
+        // microphones retain the original 48 kHz capture path.
+        int[] sampleRates = bluetoothCapture ?
+                new int[] { 16000, 8000 } :
+                new int[] { SAMPLE_RATE };
+
+        int[] preferredSources = bluetoothCapture ?
                 new int[] {
                         MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                         MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                        MediaRecorder.AudioSource.MIC,
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1
+                        MediaRecorder.AudioSource.MIC
                 } :
                 new int[] {
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ? MediaRecorder.AudioSource.UNPROCESSED : -1,
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ?
+                                MediaRecorder.AudioSource.UNPROCESSED : -1,
                         MediaRecorder.AudioSource.VOICE_RECOGNITION,
                         MediaRecorder.AudioSource.MIC
                 };
 
-        for (int source : preferredSources) {
-            AudioRecord candidate;
-
-            if (source < 0) {
+        for (int sampleRate : sampleRates) {
+            int minBufferSizeBytes = AudioRecord.getMinBufferSize(sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT);
+            if (minBufferSizeBytes <= 0) {
                 continue;
             }
 
-            candidate = buildAudioRecord(source, bufferSizeBytes);
-            if (candidate == null) {
-                continue;
-            }
+            int frameSamples = Math.max(1, sampleRate / 50); // 20 ms
+            int bufferSizeBytes = Math.max(minBufferSizeBytes, frameSamples * 4 * 2);
+            int bufferSamples = frameSamples;
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && preferredDevice != null) {
-                boolean preferredApplied = candidate.setPreferredDevice(preferredDevice);
-                if (!preferredApplied) {
-                    LimeLog.info("Preferred microphone device selection was rejected by AudioRecord");
+            for (int source : preferredSources) {
+                AudioRecord candidate;
+
+                if (source < 0) {
+                    continue;
+                }
+
+                candidate = buildAudioRecord(source, sampleRate, bufferSizeBytes);
+                if (candidate == null) {
+                    continue;
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && preferredDevice != null) {
+                    boolean preferredApplied = candidate.setPreferredDevice(preferredDevice);
+                    if (!preferredApplied) {
+                        LimeLog.info("Preferred microphone device selection was rejected by AudioRecord");
+                        candidate.release();
+                        continue;
+                    }
+                }
+
+                if (candidate.getState() != AudioRecord.STATE_INITIALIZED) {
                     candidate.release();
                     continue;
                 }
-            }
 
-            if (candidate.getState() != AudioRecord.STATE_INITIALIZED) {
-                candidate.release();
-                continue;
+                CaptureConfig config = new CaptureConfig();
+                config.record = candidate;
+                config.bufferSamples = bufferSamples;
+                config.sampleRate = sampleRate;
+                config.sourceName = audioSourceToString(source);
+                config.deviceLabel = preferredDevice != null ?
+                        preferredDeviceLabel : string(R.string.microphone_device_default);
+                config.statusMessage = missingSelectedDevice ?
+                        string(R.string.microphone_preview_selected_missing) :
+                        (preferredDevice != null ?
+                                string(R.string.microphone_preview_selected_active) :
+                                string(R.string.microphone_preview_default_active));
+                return config;
             }
-
-            CaptureConfig config = new CaptureConfig();
-            config.record = candidate;
-            config.bufferSamples = bufferSamples;
-            config.sourceName = audioSourceToString(source);
-            config.deviceLabel = preferredDevice != null ? preferredDeviceLabel : string(R.string.microphone_device_default);
-            config.statusMessage = missingSelectedDevice ?
-                    string(R.string.microphone_preview_selected_missing) :
-                    (preferredDevice != null ?
-                            string(R.string.microphone_preview_selected_active) :
-                            string(R.string.microphone_preview_default_active));
-            return config;
         }
 
         return null;
     }
 
-    private AudioRecord buildAudioRecord(int audioSource, int bufferSizeBytes) {
+    private AudioRecord buildAudioRecord(int audioSource, int sampleRate, int bufferSizeBytes) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             return new AudioRecord.Builder()
                     .setAudioSource(audioSource)
                     .setAudioFormat(new AudioFormat.Builder()
                             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setSampleRate(SAMPLE_RATE)
+                            .setSampleRate(sampleRate)
                             .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                             .build())
                     .setBufferSizeInBytes(bufferSizeBytes)
@@ -451,7 +537,7 @@ public class MicrophoneCaptureManager {
         }
 
         return new AudioRecord(audioSource,
-                SAMPLE_RATE,
+                sampleRate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
                 bufferSizeBytes);
@@ -605,39 +691,6 @@ public class MicrophoneCaptureManager {
         return null;
     }
 
-    private boolean isBluetoothDeviceId(int deviceId) {
-        if (deviceId == 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return false;
-        }
-
-        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        if (audioManager == null) {
-            return false;
-        }
-
-        for (AudioDeviceInfo deviceInfo : audioManager.getDevices(AudioManager.GET_DEVICES_ALL)) {
-            if (deviceInfo.getId() == deviceId && isBluetoothHeadsetDevice(deviceInfo)) {
-                return true;
-            }
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
-                for (AudioDeviceInfo deviceInfo : audioManager.getAvailableCommunicationDevices()) {
-                    if (deviceInfo.getId() == deviceId && isBluetoothHeadsetDevice(deviceInfo)) {
-                        return true;
-                    }
-                }
-            }
-            catch (SecurityException | IllegalStateException e) {
-                LimeLog.warning("Unable to inspect Bluetooth communication device: " +
-                        e.getMessage());
-            }
-        }
-
-        return false;
-    }
-
     private AudioDeviceInfo findInputDevice(int deviceId) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return null;
@@ -749,6 +802,7 @@ public class MicrophoneCaptureManager {
     private static final class CaptureConfig {
         AudioRecord record;
         int bufferSamples;
+        int sampleRate;
         String sourceName;
         String deviceLabel;
         String statusMessage;
