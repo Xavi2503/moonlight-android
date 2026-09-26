@@ -2077,6 +2077,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         return keyCode != KeyEvent.KEYCODE_UNKNOWN ? keyCode : KeyEvent.KEYCODE_Z;
     }
 
+    private boolean isBluetoothMicrophoneSelected() {
+        return prefConfig != null &&
+                prefConfig.enableMicrophone &&
+                MicrophoneCaptureManager.isBluetoothMicrophoneSelection(
+                        this, prefConfig.microphoneDeviceId);
+    }
+
     @Override
     public void setPushToTalkPressed(boolean pressed) {
         if (prefConfig == null || !prefConfig.enablePushToTalk || conn == null || keyboardTranslator == null) {
@@ -2091,8 +2098,36 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         int androidKeyCode = getPushToTalkHostAndroidKeyCode();
         short translated = keyboardTranslator.translate(androidKeyCode, 0, -1);
         if (translated == 0) {
-            LimeLog.warning("Unable to translate configured push-to-talk key: " + prefConfig.pushToTalkHostKey);
+            LimeLog.warning("Unable to translate configured push-to-talk key: " +
+                    prefConfig.pushToTalkHostKey);
             return;
+        }
+
+        final boolean bluetoothPttMic = isBluetoothMicrophoneSelected();
+
+        if (pressed && bluetoothPttMic) {
+            if (!MicrophoneCaptureManager.hasRecordAudioPermission(this)) {
+                displayTransientMessage(getString(R.string.microphone_stream_permission_revoked));
+                return;
+            }
+
+            if (!MoonBridge.isMicrophoneStreamActive()) {
+                displayTransientMessage(getString(R.string.microphone_host_not_negotiated));
+                return;
+            }
+
+            if (microphoneCaptureManager == null) {
+                microphoneCaptureManager = new MicrophoneCaptureManager(this);
+            }
+
+            // Bring HFP up before key-down reaches the game. This keeps the first
+            // spoken syllable from being lost while Android switches Bluetooth
+            // from A2DP media audio to the headset communication microphone.
+            if (!microphoneCaptureManager.startStreaming(prefConfig.microphoneDeviceId, null)) {
+                LimeLog.warning("Unable to start Bluetooth microphone for push-to-talk");
+                displayTransientMessage(getString(R.string.microphone_stream_start_failed));
+                return;
+            }
         }
 
         conn.sendKeyboardInput(translated,
@@ -2100,6 +2135,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 (byte) 0,
                 (byte) 0);
         pushToTalkActive = pressed;
+
+        if (!pressed && bluetoothPttMic) {
+            // HFP is only required while transmitting. Release it immediately so
+            // Android returns the headset to full-quality A2DP game audio.
+            stopMicrophoneCapture();
+        }
     }
 
     @Override
@@ -3602,6 +3643,14 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         if (microphoneCaptureManager == null) {
             microphoneCaptureManager = new MicrophoneCaptureManager(this);
+        }
+
+        // With controller PTT enabled, a classic Bluetooth headset microphone is
+        // activated only while PTT is held. Keeping HFP active permanently would
+        // force the headset's game audio out of full-quality A2DP for the whole stream.
+        if (prefConfig.enablePushToTalk && isBluetoothMicrophoneSelected()) {
+            LimeLog.info("Deferring Bluetooth microphone capture until push-to-talk is pressed");
+            return;
         }
 
         LimeLog.info("Starting microphone streaming on device id " + prefConfig.microphoneDeviceId +
