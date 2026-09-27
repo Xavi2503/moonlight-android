@@ -3480,8 +3480,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
             // USB service claims only interface 4; buttons/sticks remain on this InputDevice.
             if (prefConfig.usbDriver &&
                     inputDevice.getVendorId() == 0x1532 &&
-                    (inputDevice.getProductId() == 0x0037 ||
-                     inputDevice.getProductId() == 0x0727)) {
+                    inputDevice.getProductId() == 0x0727) {
                 capabilities |= MoonBridge.LI_CCAP_RUMBLE;
             }
 
