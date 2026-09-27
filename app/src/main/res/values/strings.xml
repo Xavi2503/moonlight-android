@@ -224,6 +224,8 @@
     <string name="summary_microphone_device_list">Choose which local microphone Artemis captures. Leave this on the default option to follow your system input device.</string>
     <string name="microphone_device_default">Default system microphone</string>
     <string name="title_microphone_preview">Microphone input preview</string>
+    <string name="title_bluetooth_microphone_volume">Bluetooth microphone level</string>
+    <string name="summary_bluetooth_microphone_volume">Adjust headset microphone level before it is sent to the PC. Lower this if your voice sounds clipped or distorted.</string>
     <string name="microphone_preview_inactive">Microphone preview inactive</string>
     <string name="microphone_preview_permission_required">Microphone permission is required</string>
     <string name="microphone_preview_signal_detected">Input detected on the selected microphone.</string>
