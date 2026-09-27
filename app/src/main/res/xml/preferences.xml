@@ -249,6 +249,17 @@
             android:summary="@string/summary_microphone_device_list"
             android:title="@string/title_microphone_device_list"
             app:iconSpaceReserved="false" />
+        <com.limelight.preferences.SeekBarPreference
+            android:defaultValue="50"
+            android:dependency="checkbox_enable_microphone"
+            android:key="seekbar_bluetooth_microphone_volume"
+            android:max="100"
+            android:summary="@string/summary_bluetooth_microphone_volume"
+            android:text="@string/suffix_seekbar_vibrate_fallback_strength"
+            android:title="@string/title_bluetooth_microphone_volume"
+            app:iconSpaceReserved="false"
+            seekbar:min="25"
+            seekbar:step="5" />
         <com.limelight.preferences.MicrophonePreviewPreference
             android:key="microphone_preview"
             android:title="@string/title_microphone_preview"
