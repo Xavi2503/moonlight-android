@@ -7,6 +7,9 @@ import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.media.audiofx.AcousticEchoCanceler;
+import android.media.audiofx.AutomaticGainControl;
+import android.media.audiofx.NoiseSuppressor;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -72,6 +75,10 @@ public class MicrophoneCaptureManager {
     private AudioManager routedAudioManager;
     private boolean communicationRouteActive;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
+
+    private AutomaticGainControl automaticGainControl;
+    private NoiseSuppressor noiseSuppressor;
+    private AcousticEchoCanceler acousticEchoCanceler;
 
     public MicrophoneCaptureManager(Context context) {
         this.context = context.getApplicationContext();
@@ -249,6 +256,7 @@ public class MicrophoneCaptureManager {
 
         captureThread = null;
         audioRecord = null;
+        releaseCaptureEffects();
         if (recordToRelease != null) {
             recordToRelease.release();
         }
@@ -431,7 +439,8 @@ public class MicrophoneCaptureManager {
         signalDetected = false;
         running = true;
 
-        captureThread = new Thread(() -> runCaptureLoop(bufferSamples, captureSampleRate),
+        captureThread = new Thread(() -> runCaptureLoop(
+                        bufferSamples, captureSampleRate, config.bluetoothCapture),
                 streamToHost ? "MicStreamCapture" : "MicPreviewCapture");
         captureThread.start();
 
@@ -448,7 +457,7 @@ public class MicrophoneCaptureManager {
         return true;
     }
 
-    private void runCaptureLoop(int bufferSamples, int captureSampleRate) {
+    private void runCaptureLoop(int bufferSamples, int captureSampleRate, boolean bluetoothCapture) {
         short[] readBuffer = new short[bufferSamples];
         short[] hostBuffer = captureSampleRate == SAMPLE_RATE ?
                 null : new short[bufferSamples * Math.max(1, SAMPLE_RATE / captureSampleRate)];
@@ -468,6 +477,14 @@ public class MicrophoneCaptureManager {
 
             if (samplesRead <= 0) {
                 continue;
+            }
+
+            // Leave ~6 dB of headroom for Bluetooth HFP speech. On some Android
+            // stacks the headset mic arrives very close to full scale, which can
+            // sound badly clipped after voice processing/encoding even though the
+            // input itself is otherwise clean.
+            if (bluetoothCapture) {
+                applyBluetoothHeadroom(readBuffer, samplesRead);
             }
 
             SignalStats signalStats = calculateSignalStats(readBuffer, samplesRead);
@@ -521,18 +538,23 @@ public class MicrophoneCaptureManager {
         int factor = SAMPLE_RATE / inputRate;
         int out = 0;
 
+        // Integer-ratio voice resampling. Repeating each HFP voice sample is
+        // deliberately conservative: it preserves amplitude and continuity across
+        // 20 ms AudioRecord blocks without adding interpolation edge artifacts.
         for (int i = 0; i < inputSamples; i++) {
-            int current = input[i];
-            int next = i + 1 < inputSamples ? input[i + 1] : current;
-
+            short sample = input[i];
             for (int step = 0; step < factor; step++) {
-                double fraction = (double) step / factor;
-                int sample = (int) Math.round(current + ((next - current) * fraction));
-                output[out++] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, sample));
+                output[out++] = sample;
             }
         }
 
         return out;
+    }
+
+    private static void applyBluetoothHeadroom(short[] samples, int sampleCount) {
+        for (int i = 0; i < sampleCount; i++) {
+            samples[i] = (short) (samples[i] / 2);
+        }
     }
 
     private CaptureConfig createCaptureConfig(int preferredDeviceId) {
@@ -562,9 +584,9 @@ public class MicrophoneCaptureManager {
 
         int[] preferredSources = bluetoothCapture ?
                 new int[] {
-                        MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                         MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                        MediaRecorder.AudioSource.MIC
+                        MediaRecorder.AudioSource.MIC,
+                        MediaRecorder.AudioSource.VOICE_COMMUNICATION
                 } :
                 new int[] {
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ?
@@ -611,10 +633,15 @@ public class MicrophoneCaptureManager {
                     continue;
                 }
 
+                if (bluetoothCapture) {
+                    configureBluetoothCaptureEffects(candidate);
+                }
+
                 CaptureConfig config = new CaptureConfig();
                 config.record = candidate;
                 config.bufferSamples = bufferSamples;
                 config.sampleRate = sampleRate;
+                config.bluetoothCapture = bluetoothCapture;
                 config.sourceName = audioSourceToString(source);
                 config.deviceLabel = preferredDevice != null ?
                         preferredDeviceLabel : string(R.string.microphone_device_default);
@@ -628,6 +655,64 @@ public class MicrophoneCaptureManager {
         }
 
         return null;
+    }
+
+    private void configureBluetoothCaptureEffects(AudioRecord record) {
+        releaseCaptureEffects();
+
+        int sessionId = record.getAudioSessionId();
+
+        try {
+            if (AutomaticGainControl.isAvailable()) {
+                automaticGainControl = AutomaticGainControl.create(sessionId);
+                if (automaticGainControl != null) {
+                    automaticGainControl.setEnabled(false);
+                    LimeLog.info("Bluetooth mic AGC disabled=" + !automaticGainControl.getEnabled());
+                }
+            }
+        }
+        catch (RuntimeException e) {
+            LimeLog.warning("Unable to disable Bluetooth mic AGC: " + e.getMessage());
+        }
+
+        try {
+            if (AcousticEchoCanceler.isAvailable()) {
+                acousticEchoCanceler = AcousticEchoCanceler.create(sessionId);
+                if (acousticEchoCanceler != null) {
+                    acousticEchoCanceler.setEnabled(false);
+                }
+            }
+        }
+        catch (RuntimeException e) {
+            LimeLog.warning("Unable to disable Bluetooth mic AEC: " + e.getMessage());
+        }
+
+        try {
+            if (NoiseSuppressor.isAvailable()) {
+                noiseSuppressor = NoiseSuppressor.create(sessionId);
+                if (noiseSuppressor != null) {
+                    noiseSuppressor.setEnabled(false);
+                }
+            }
+        }
+        catch (RuntimeException e) {
+            LimeLog.warning("Unable to disable Bluetooth mic noise suppressor: " + e.getMessage());
+        }
+    }
+
+    private void releaseCaptureEffects() {
+        if (automaticGainControl != null) {
+            automaticGainControl.release();
+            automaticGainControl = null;
+        }
+        if (acousticEchoCanceler != null) {
+            acousticEchoCanceler.release();
+            acousticEchoCanceler = null;
+        }
+        if (noiseSuppressor != null) {
+            noiseSuppressor.release();
+            noiseSuppressor = null;
+        }
     }
 
     private AudioRecord buildAudioRecord(int audioSource, int sampleRate, int bufferSizeBytes) {
@@ -910,6 +995,7 @@ public class MicrophoneCaptureManager {
         AudioRecord record;
         int bufferSamples;
         int sampleRate;
+        boolean bluetoothCapture;
         String sourceName;
         String deviceLabel;
         String statusMessage;
