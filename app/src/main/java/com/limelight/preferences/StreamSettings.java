@@ -1298,6 +1298,20 @@ public class StreamSettings extends AppCompatActivity {
                 }
             }
 
+            Preference bluetoothMicVolumePreference =
+                    findPreference(MicrophoneCaptureManager.BLUETOOTH_MIC_VOLUME_PREF_STRING);
+            if (bluetoothMicVolumePreference != null) {
+                bluetoothMicVolumePreference.setOnPreferenceChangeListener((preference, newValue) -> {
+                    if (isResumed()) {
+                        // The custom SeekBarPreference persists the new value before
+                        // invoking this listener, so restarting the preview picks up
+                        // the updated Bluetooth mic level immediately.
+                        refreshMicrophonePreview();
+                    }
+                    return true;
+                });
+            }
+
             if (microphonePreviewPreference != null) {
                 int statusResId = MicrophoneCaptureManager.hasRecordAudioPermission(requireContext()) ?
                         R.string.microphone_preview_inactive :
