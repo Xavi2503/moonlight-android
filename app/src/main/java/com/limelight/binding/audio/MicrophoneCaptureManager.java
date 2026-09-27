@@ -60,6 +60,10 @@ public class MicrophoneCaptureManager {
     private Thread captureThread;
     private volatile boolean running;
     private boolean streamingToHost;
+    private boolean hostStreamingPrepared;
+    private volatile boolean silenceKeepaliveRunning;
+    private Thread silenceKeepaliveThread;
+    private volatile boolean firstPcmQueued;
     private LevelListener levelListener;
     private String currentStatus;
     private double currentLevel;
@@ -187,15 +191,44 @@ public class MicrophoneCaptureManager {
         return startCapture(preferredDeviceId, listener, true);
     }
 
+    public boolean prepareStreaming() {
+        if (hostStreamingPrepared) {
+            startSilenceKeepalive();
+            return true;
+        }
+
+        if (!MoonBridge.isMicrophoneStreamActive()) {
+            return false;
+        }
+
+        if (MoonBridge.setupMicrophoneEncoder(SAMPLE_RATE, CHANNEL_COUNT, DEFAULT_BITRATE) != 0) {
+            return false;
+        }
+
+        MoonBridge.startMicrophoneStreaming();
+        hostStreamingPrepared = true;
+        streamingToHost = false;
+        startSilenceKeepalive();
+        LimeLog.info("Prepared persistent host microphone stream with silence keepalive");
+        return true;
+    }
+
+    public void pauseStreamingCapture() {
+        stopLocalCapture(false);
+        startSilenceKeepalive();
+    }
+
     public void stop() {
+        stopLocalCapture(true);
+    }
+
+    private void stopLocalCapture(boolean shutdownHostStream) {
         AudioRecord recordToRelease;
         Thread threadToJoin;
-        boolean wasStreaming;
 
         running = false;
         recordToRelease = audioRecord;
         threadToJoin = captureThread;
-        wasStreaming = streamingToHost;
 
         if (recordToRelease != null) {
             try {
@@ -220,17 +253,54 @@ public class MicrophoneCaptureManager {
             recordToRelease.release();
         }
 
-        if (wasStreaming) {
-            MoonBridge.stopMicrophoneStreaming();
-            MoonBridge.cleanupMicrophoneEncoder();
-        }
         streamingToHost = false;
-
+        firstPcmQueued = false;
         deactivateCommunicationRoute();
+
+        if (shutdownHostStream) {
+            stopSilenceKeepalive();
+            if (hostStreamingPrepared) {
+                MoonBridge.stopMicrophoneStreaming();
+                MoonBridge.cleanupMicrophoneEncoder();
+                hostStreamingPrepared = false;
+            }
+        }
 
         currentLevel = 0.0;
         signalDetected = false;
         dispatchStatus(string(R.string.microphone_preview_inactive), 0.0, false);
+    }
+
+    private void startSilenceKeepalive() {
+        if (!hostStreamingPrepared || streamingToHost || silenceKeepaliveRunning) {
+            return;
+        }
+
+        silenceKeepaliveRunning = true;
+        silenceKeepaliveThread = new Thread(() -> {
+            short[] silence = new short[FRAME_SIZE];
+
+            while (silenceKeepaliveRunning && hostStreamingPrepared && !streamingToHost) {
+                MoonBridge.queueMicrophonePcm(silence, silence.length);
+                SystemClock.sleep(20);
+            }
+        }, "MicSilenceKeepalive");
+        silenceKeepaliveThread.start();
+    }
+
+    private void stopSilenceKeepalive() {
+        silenceKeepaliveRunning = false;
+        Thread thread = silenceKeepaliveThread;
+        silenceKeepaliveThread = null;
+
+        if (thread != null && thread != Thread.currentThread()) {
+            try {
+                thread.join(250);
+            }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private boolean startCapture(int preferredDeviceId, LevelListener listener, boolean streamToHost) {
@@ -239,7 +309,13 @@ public class MicrophoneCaptureManager {
         final int bufferSamples;
         final int captureSampleRate;
 
-        stop();
+        if (streamToHost && hostStreamingPrepared) {
+            stopLocalCapture(false);
+            stopSilenceKeepalive();
+        }
+        else {
+            stop();
+        }
         levelListener = listener;
 
         if (!hasRecordAudioPermission(context)) {
@@ -287,10 +363,17 @@ public class MicrophoneCaptureManager {
         bufferSamples = config.bufferSamples;
         captureSampleRate = config.sampleRate;
 
-        if (streamToHost && MoonBridge.setupMicrophoneEncoder(SAMPLE_RATE, CHANNEL_COUNT, DEFAULT_BITRATE) != 0) {
-            newRecord.release();
-            dispatchStatus(string(R.string.microphone_encoder_setup_failed), 0.0, false);
-            return false;
+        boolean preparedHere = false;
+        if (streamToHost && !hostStreamingPrepared) {
+            if (MoonBridge.setupMicrophoneEncoder(SAMPLE_RATE, CHANNEL_COUNT, DEFAULT_BITRATE) != 0) {
+                newRecord.release();
+                dispatchStatus(string(R.string.microphone_encoder_setup_failed), 0.0, false);
+                return false;
+            }
+
+            MoonBridge.startMicrophoneStreaming();
+            hostStreamingPrepared = true;
+            preparedHere = true;
         }
 
         try {
@@ -298,7 +381,14 @@ public class MicrophoneCaptureManager {
         }
         catch (IllegalStateException e) {
             if (streamToHost) {
-                MoonBridge.cleanupMicrophoneEncoder();
+                if (preparedHere) {
+                    MoonBridge.stopMicrophoneStreaming();
+                    MoonBridge.cleanupMicrophoneEncoder();
+                    hostStreamingPrepared = false;
+                }
+                else {
+                    startSilenceKeepalive();
+                }
             }
             newRecord.release();
             dispatchStatus(string(R.string.microphone_capture_start_failed), 0.0, false);
@@ -307,7 +397,14 @@ public class MicrophoneCaptureManager {
 
         if (newRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
             if (streamToHost) {
-                MoonBridge.cleanupMicrophoneEncoder();
+                if (preparedHere) {
+                    MoonBridge.stopMicrophoneStreaming();
+                    MoonBridge.cleanupMicrophoneEncoder();
+                    hostStreamingPrepared = false;
+                }
+                else {
+                    startSilenceKeepalive();
+                }
             }
             newRecord.release();
             dispatchStatus(string(R.string.microphone_capture_start_failed), 0.0, false);
@@ -327,19 +424,26 @@ public class MicrophoneCaptureManager {
         }
 
         audioRecord = newRecord;
+        firstPcmQueued = false;
         streamingToHost = streamToHost;
         currentStatus = config.statusMessage;
         currentLevel = 0.0;
         signalDetected = false;
         running = true;
 
-        if (streamToHost) {
-            MoonBridge.startMicrophoneStreaming();
-        }
-
         captureThread = new Thread(() -> runCaptureLoop(bufferSamples, captureSampleRate),
                 streamToHost ? "MicStreamCapture" : "MicPreviewCapture");
         captureThread.start();
+
+        if (streamToHost) {
+            long firstFrameDeadline = SystemClock.elapsedRealtime() + 400;
+            while (!firstPcmQueued && running &&
+                    SystemClock.elapsedRealtime() < firstFrameDeadline) {
+                SystemClock.sleep(10);
+            }
+            LimeLog.info("Microphone first PCM queued=" + firstPcmQueued);
+        }
+
         dispatchStatus(config.statusMessage, 0.0, false);
         return true;
     }
@@ -387,6 +491,9 @@ public class MicrophoneCaptureManager {
                 int queued = MoonBridge.queueMicrophonePcm(pcmToQueue, samplesToQueue);
                 if (queued < 0) {
                     LimeLog.warning("Failed to queue microphone PCM data for native encoding");
+                }
+                else if (queued > 0) {
+                    firstPcmQueued = true;
                 }
             }
 
