@@ -31,6 +31,7 @@ import java.util.concurrent.locks.LockSupport;
  */
 public final class RazerKishiHapticsController extends AbstractController {
     private static final int RAZER_VID = 0x1532;
+    private static final int KISHI_V3_PRO_XL_XINPUT_PID = 0x0037;
     private static final int KISHI_V3_PRO_XL_HID_PID = 0x0727;
 
     private static final int SENSA_INTERFACE_ID = 4;
@@ -78,7 +79,8 @@ public final class RazerKishiHapticsController extends AbstractController {
         if (device == null ||
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
                 device.getVendorId() != RAZER_VID ||
-                device.getProductId() != KISHI_V3_PRO_XL_HID_PID) {
+                (device.getProductId() != KISHI_V3_PRO_XL_XINPUT_PID &&
+                 device.getProductId() != KISHI_V3_PRO_XL_HID_PID)) {
             return false;
         }
 
