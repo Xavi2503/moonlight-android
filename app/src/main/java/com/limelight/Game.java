@@ -2137,9 +2137,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         pushToTalkActive = pressed;
 
         if (!pressed && bluetoothPttMic) {
-            // HFP is only required while transmitting. Release it immediately so
-            // Android returns the headset to full-quality A2DP game audio.
-            stopMicrophoneCapture();
+            // HFP is only required while transmitting. Release the physical
+            // Bluetooth capture immediately so Android returns to full-quality
+            // A2DP, but keep the already-negotiated host microphone stream alive.
+            if (microphoneCaptureManager != null) {
+                microphoneCaptureManager.pauseStreamingCapture();
+            }
         }
     }
 
@@ -3645,11 +3648,18 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             microphoneCaptureManager = new MicrophoneCaptureManager(this);
         }
 
-        // With controller PTT enabled, a classic Bluetooth headset microphone is
-        // activated only while PTT is held. Keeping HFP active permanently would
-        // force the headset's game audio out of full-quality A2DP for the whole stream.
+        // With controller PTT enabled, keep the host microphone stream alive
+        // continuously using digital silence, but leave the physical Bluetooth
+        // HFP capture closed until PTT is pressed. This keeps COD's input device
+        // stable without sacrificing full-quality A2DP game audio.
         if (prefConfig.enablePushToTalk && isBluetoothMicrophoneSelected()) {
-            LimeLog.info("Deferring Bluetooth microphone capture until push-to-talk is pressed");
+            if (!microphoneCaptureManager.prepareStreaming()) {
+                LimeLog.warning("Unable to prepare persistent Bluetooth microphone host stream");
+                displayTransientMessage(getString(R.string.microphone_stream_start_failed));
+            }
+            else {
+                LimeLog.info("Prepared Bluetooth PTT microphone stream with silent keepalive");
+            }
             return;
         }
 
