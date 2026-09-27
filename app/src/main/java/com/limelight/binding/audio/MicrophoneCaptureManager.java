@@ -599,8 +599,10 @@ public class MicrophoneCaptureManager {
 
         int[] preferredSources = bluetoothCapture ?
                 new int[] {
-                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ?
+                                MediaRecorder.AudioSource.UNPROCESSED : -1,
                         MediaRecorder.AudioSource.MIC,
+                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
                         MediaRecorder.AudioSource.VOICE_COMMUNICATION
                 } :
                 new int[] {
@@ -658,6 +660,10 @@ public class MicrophoneCaptureManager {
                 config.sampleRate = sampleRate;
                 config.bluetoothCapture = bluetoothCapture;
                 config.sourceName = audioSourceToString(source);
+                if (bluetoothCapture) {
+                    LimeLog.info("Bluetooth microphone capture source selected: " +
+                            config.sourceName + " at " + sampleRate + " Hz");
+                }
                 config.deviceLabel = preferredDevice != null ?
                         preferredDeviceLabel : string(R.string.microphone_device_default);
                 config.statusMessage = missingSelectedDevice ?
