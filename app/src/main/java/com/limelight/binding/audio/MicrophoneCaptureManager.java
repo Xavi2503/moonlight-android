@@ -687,8 +687,8 @@ public class MicrophoneCaptureManager {
             if (AutomaticGainControl.isAvailable()) {
                 automaticGainControl = AutomaticGainControl.create(sessionId);
                 if (automaticGainControl != null) {
-                    automaticGainControl.setEnabled(false);
-                    LimeLog.info("Bluetooth mic AGC disabled=" + !automaticGainControl.getEnabled());
+                    automaticGainControl.setEnabled(true);
+                    LimeLog.info("Bluetooth mic AGC enabled=" + automaticGainControl.getEnabled());
                 }
             }
         }
