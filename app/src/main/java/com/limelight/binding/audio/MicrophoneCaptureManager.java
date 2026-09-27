@@ -16,6 +16,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 
 import androidx.core.content.ContextCompat;
+import androidx.preference.PreferenceManager;
 
 import com.limelight.LimeLog;
 import com.limelight.R;
@@ -43,6 +44,8 @@ public class MicrophoneCaptureManager {
     }
 
     public static final int DEVICE_ID_BLUETOOTH_HEADSET = -100;
+    public static final String BLUETOOTH_MIC_VOLUME_PREF_STRING = "seekbar_bluetooth_microphone_volume";
+    private static final int DEFAULT_BLUETOOTH_MIC_VOLUME = 50;
 
     private static final int SAMPLE_RATE = 48000;
     private static final int CHANNEL_COUNT = 1;
@@ -439,8 +442,12 @@ public class MicrophoneCaptureManager {
         signalDetected = false;
         running = true;
 
+        final int bluetoothMicVolumePercent = config.bluetoothCapture ?
+                getBluetoothMicVolumePercent() : 100;
+
         captureThread = new Thread(() -> runCaptureLoop(
-                        bufferSamples, captureSampleRate, config.bluetoothCapture),
+                        bufferSamples, captureSampleRate, config.bluetoothCapture,
+                        bluetoothMicVolumePercent),
                 streamToHost ? "MicStreamCapture" : "MicPreviewCapture");
         captureThread.start();
 
@@ -457,7 +464,8 @@ public class MicrophoneCaptureManager {
         return true;
     }
 
-    private void runCaptureLoop(int bufferSamples, int captureSampleRate, boolean bluetoothCapture) {
+    private void runCaptureLoop(int bufferSamples, int captureSampleRate,
+                                boolean bluetoothCapture, int bluetoothMicVolumePercent) {
         short[] readBuffer = new short[bufferSamples];
         short[] hostBuffer = captureSampleRate == SAMPLE_RATE ?
                 null : new short[bufferSamples * Math.max(1, SAMPLE_RATE / captureSampleRate)];
@@ -484,7 +492,7 @@ public class MicrophoneCaptureManager {
             // sound badly clipped after voice processing/encoding even though the
             // input itself is otherwise clean.
             if (bluetoothCapture) {
-                applyBluetoothHeadroom(readBuffer, samplesRead);
+                applyBluetoothHeadroom(readBuffer, samplesRead, bluetoothMicVolumePercent);
             }
 
             SignalStats signalStats = calculateSignalStats(readBuffer, samplesRead);
@@ -551,9 +559,16 @@ public class MicrophoneCaptureManager {
         return out;
     }
 
-    private static void applyBluetoothHeadroom(short[] samples, int sampleCount) {
+    private int getBluetoothMicVolumePercent() {
+        int value = PreferenceManager.getDefaultSharedPreferences(context)
+                .getInt(BLUETOOTH_MIC_VOLUME_PREF_STRING, DEFAULT_BLUETOOTH_MIC_VOLUME);
+        return Math.max(25, Math.min(100, value));
+    }
+
+    private static void applyBluetoothHeadroom(short[] samples, int sampleCount, int volumePercent) {
+        int scale = Math.max(25, Math.min(100, volumePercent));
         for (int i = 0; i < sampleCount; i++) {
-            samples[i] = (short) (samples[i] / 2);
+            samples[i] = (short) ((samples[i] * scale) / 100);
         }
     }
 
