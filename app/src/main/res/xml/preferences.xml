@@ -249,6 +249,13 @@
             android:summary="@string/summary_microphone_device_list"
             android:title="@string/title_microphone_device_list"
             app:iconSpaceReserved="false" />
+        <CheckBoxPreference
+            android:defaultValue="false"
+            android:dependency="checkbox_enable_microphone"
+            android:key="checkbox_keep_bluetooth_microphone_active"
+            android:summary="@string/summary_keep_bluetooth_microphone_active"
+            android:title="@string/title_keep_bluetooth_microphone_active"
+            app:iconSpaceReserved="false" />
         <com.limelight.preferences.SeekBarPreference
             android:defaultValue="50"
             android:dependency="checkbox_enable_microphone"
