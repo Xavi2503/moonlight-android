@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.view.Display;
+import android.util.Base64;
 
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.profiles.ProfilesManager;
@@ -35,11 +36,18 @@ public class PreferenceConfiguration {
     }
 
     public static final class ControllerKeyMapping {
+        public String functionName;
         public String hostKey;
         public int controllerKeyCode;
         public int controllerScanCode;
 
         public ControllerKeyMapping(String hostKey, int controllerKeyCode, int controllerScanCode) {
+            this("", hostKey, controllerKeyCode, controllerScanCode);
+        }
+
+        public ControllerKeyMapping(String functionName, String hostKey,
+                                    int controllerKeyCode, int controllerScanCode) {
+            this.functionName = functionName != null ? functionName.trim() : "";
             this.hostKey = normalizeControllerHostKey(hostKey);
             this.controllerKeyCode = controllerKeyCode;
             this.controllerScanCode = controllerScanCode;
@@ -755,6 +763,27 @@ private static int getFramePacingValue(Context context) {
         return value;
     }
 
+    private static String encodeControllerMappingName(String functionName) {
+        String value = functionName != null ? functionName.trim() : "";
+        return Base64.encodeToString(
+                value.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                Base64.URL_SAFE | Base64.NO_WRAP);
+    }
+
+    private static String decodeControllerMappingName(String encodedName) {
+        if (encodedName == null || encodedName.isEmpty()) {
+            return "";
+        }
+        try {
+            return new String(
+                    Base64.decode(encodedName, Base64.URL_SAFE | Base64.NO_WRAP),
+                    java.nio.charset.StandardCharsets.UTF_8).trim();
+        }
+        catch (IllegalArgumentException e) {
+            return "";
+        }
+    }
+
     private static String encodeControllerKeyMappings(List<ControllerKeyMapping> mappings) {
         StringBuilder builder = new StringBuilder();
         for (ControllerKeyMapping mapping : mappings) {
@@ -768,7 +797,9 @@ private static int getFramePacingValue(Context context) {
                     .append(',')
                     .append(mapping.controllerKeyCode)
                     .append(',')
-                    .append(mapping.controllerScanCode);
+                    .append(mapping.controllerScanCode)
+                    .append(',')
+                    .append(encodeControllerMappingName(mapping.functionName));
         }
         return builder.toString();
     }
@@ -781,11 +812,15 @@ private static int getFramePacingValue(Context context) {
 
         for (String entry : encoded.split(";")) {
             String[] fields = entry.split(",", -1);
-            if (fields.length != 3) {
+            if (fields.length != 3 && fields.length != 4) {
                 continue;
             }
             try {
+                String functionName = fields.length == 4
+                        ? decodeControllerMappingName(fields[3])
+                        : "";
                 mappings.add(new ControllerKeyMapping(
+                        functionName,
                         fields[0],
                         Integer.parseInt(fields[1]),
                         Integer.parseInt(fields[2])));
