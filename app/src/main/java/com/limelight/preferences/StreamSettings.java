@@ -1106,6 +1106,26 @@ public class StreamSettings extends AppCompatActivity {
                 });
                 controllerKeyMappingsCategory.addPreference(buttonPreference);
 
+                CheckBoxPreference bluetoothMicPttPreference =
+                        new CheckBoxPreference(requireContext());
+                bluetoothMicPttPreference.setKey(
+                        "controller_key_mapping_bluetooth_mic_ptt_" + mappingIndex);
+                bluetoothMicPttPreference.setPersistent(false);
+                bluetoothMicPttPreference.setTitle(
+                        R.string.title_controller_key_mapping_bluetooth_mic_ptt);
+                bluetoothMicPttPreference.setSummary(
+                        R.string.summary_controller_key_mapping_bluetooth_mic_ptt);
+                bluetoothMicPttPreference.setChecked(mapping.useBluetoothMicPtt);
+                bluetoothMicPttPreference.setOnPreferenceChangeListener(
+                        (preference, newValue) -> {
+                            controllerKeyMappings.get(mappingIndex).useBluetoothMicPtt =
+                                    (Boolean) newValue;
+                            PreferenceConfiguration.saveControllerKeyMappings(
+                                    getPrefs(), controllerKeyMappings);
+                            return true;
+                        });
+                controllerKeyMappingsCategory.addPreference(bluetoothMicPttPreference);
+
                 Preference removePreference = new Preference(requireContext());
                 removePreference.setPersistent(false);
                 removePreference.setTitle(R.string.title_controller_key_mapping_remove);
