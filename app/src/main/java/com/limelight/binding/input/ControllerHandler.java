@@ -54,8 +54,10 @@ import org.cgutman.shieldcontrollerextensions.SceManager;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class ControllerHandler implements InputManager.InputDeviceListener, UsbDriverListener {
 
@@ -2959,18 +2961,19 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         sendControllerInputPacket(defaultContext);
     }
 
-    private int getPushToTalkControllerFlag() {
-        if (!prefConfig.enablePushToTalk) {
+    private int getControllerKeyMappingFlag(
+            PreferenceConfiguration.ControllerKeyMapping mapping) {
+        if (!prefConfig.enablePushToTalk || mapping == null) {
             return 0;
         }
 
-        Integer mappedFlag = ANDROID_TO_LI_BUTTON_MAP.get(prefConfig.pushToTalkControllerKeyCode);
+        Integer mappedFlag = ANDROID_TO_LI_BUTTON_MAP.get(mapping.controllerKeyCode);
         if (mappedFlag != null) {
             return mappedFlag;
         }
 
-        // Extra paddles often arrive as raw evdev scan codes rather than Android key codes.
-        switch (prefConfig.pushToTalkControllerScanCode) {
+        // Extra paddles can arrive as raw evdev scan codes rather than Android key codes.
+        switch (mapping.controllerScanCode) {
             case 0x2c4:
                 return ControllerPacket.PADDLE1_FLAG;
             case 0x2c5:
@@ -3082,16 +3085,37 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         }
 
         // When the built-in USB/XInput driver owns the controller, Android KeyEvents are bypassed.
-        // Convert the assigned gamepad button to push-to-talk here and remove it from the controller
-        // packet so the game doesn't also see the remapped source button.
-        int pushToTalkFlag = getPushToTalkControllerFlag();
-        if (pushToTalkFlag != 0) {
-            final boolean pushToTalkPressed = (buttonFlags & pushToTalkFlag) != 0;
-            if (pushToTalkPressed != context.pushToTalkPressed) {
-                context.pushToTalkPressed = pushToTalkPressed;
-                mainThreadHandler.post(() -> gestures.setPushToTalkPressed(pushToTalkPressed));
+        // Convert every configured controller-to-PC-key mapping here and consume the source
+        // controller button so the game doesn't also receive it as normal gamepad input.
+        if (prefConfig.enablePushToTalk && prefConfig.controllerKeyMappings != null) {
+            for (int mappingIndex = 0;
+                 mappingIndex < prefConfig.controllerKeyMappings.size();
+                 mappingIndex++) {
+                PreferenceConfiguration.ControllerKeyMapping mapping =
+                        prefConfig.controllerKeyMappings.get(mappingIndex);
+                int mappingFlag = getControllerKeyMappingFlag(mapping);
+                if (mappingFlag == 0) {
+                    continue;
+                }
+
+                final boolean mappingPressed = (buttonFlags & mappingFlag) != 0;
+                final boolean wasPressed =
+                        context.controllerKeyMappingsPressed.contains(mappingIndex);
+                if (mappingPressed != wasPressed) {
+                    final int postedMappingIndex = mappingIndex;
+                    if (mappingPressed) {
+                        context.controllerKeyMappingsPressed.add(mappingIndex);
+                    }
+                    else {
+                        context.controllerKeyMappingsPressed.remove(mappingIndex);
+                    }
+                    mainThreadHandler.post(() ->
+                            gestures.setControllerKeyMappingPressed(
+                                    postedMappingIndex, mappingPressed));
+                }
+
+                buttonFlags &= ~mappingFlag;
             }
-            buttonFlags &= ~pushToTalkFlag;
         }
 
         // Do the same for the controller keyboard shortcut. Toggle once on the
@@ -3167,7 +3191,7 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
 
         public int inputMap = 0;
         public boolean pendingExit;
-        public boolean pushToTalkPressed;
+        public final Set<Integer> controllerKeyMappingsPressed = new HashSet<>();
         public boolean controllerKeyboardPressed;
         public byte leftTrigger = 0x00;
         public byte rightTrigger = 0x00;
@@ -3234,10 +3258,14 @@ public class ControllerHandler implements InputManager.InputDeviceListener, UsbD
         public void destroy() {
             mouseEmulationActive = false;
             mainThreadHandler.removeCallbacks(mouseEmulationRunnable);
-            if (pushToTalkPressed) {
-                pushToTalkPressed = false;
-                mainThreadHandler.post(() -> gestures.setPushToTalkPressed(false));
+            for (Integer mappingIndex :
+                    new ArrayList<>(controllerKeyMappingsPressed)) {
+                final int postedMappingIndex = mappingIndex;
+                mainThreadHandler.post(() ->
+                        gestures.setControllerKeyMappingPressed(
+                                postedMappingIndex, false));
             }
+            controllerKeyMappingsPressed.clear();
             controllerKeyboardPressed = false;
         }
 
