@@ -287,6 +287,9 @@
     <string name="push_to_talk_invalid_key">Enter one keyboard key (A-Z or 0-9)</string>
     <string name="push_to_talk_button_saved">Push-to-talk button saved: %1$s</string>
     <string name="category_controller_key_mappings">Controller → PC Keyboard Mapping</string>
+    <string name="title_controller_key_mapping_name">Function Name</string>
+    <string name="summary_controller_key_mapping_name">Name: %1$s</string>
+    <string name="summary_controller_key_mapping_name_empty">Enter a custom name for this function</string>
     <string name="title_controller_key_mapping_host">Select Keyboard Key</string>
     <string name="summary_controller_key_mapping_host">PC key: %1$s</string>
     <string name="title_controller_key_mapping_button">Select Controller Button</string>
