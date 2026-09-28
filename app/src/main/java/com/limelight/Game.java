@@ -235,6 +235,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private boolean reportedCrash;
     private MicrophoneCaptureManager microphoneCaptureManager;
     private boolean pushToTalkActive;
+    private final Set<Integer> activeControllerKeyMappings = new HashSet<>();
 
     private WifiManager.WifiLock highPerfWifiLock;
     private WifiManager.WifiLock lowLatencyWifiLock;
@@ -2026,6 +2027,23 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         return (byte) modifierFlags;
     }
 
+    private int findControllerKeyMappingIndex(KeyEvent event) {
+        if (prefConfig == null || !prefConfig.enablePushToTalk ||
+                prefConfig.controllerKeyMappings == null) {
+            return -1;
+        }
+
+        for (int i = 0; i < prefConfig.controllerKeyMappings.size(); i++) {
+            PreferenceConfiguration.ControllerKeyMapping mapping =
+                    prefConfig.controllerKeyMappings.get(i);
+            if (mapping != null &&
+                    mapping.matches(event.getKeyCode(), event.getScanCode())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private boolean matchesPushToTalkButton(KeyEvent event) {
         if (prefConfig == null || !prefConfig.enablePushToTalk) {
             return false;
@@ -2082,6 +2100,61 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 prefConfig.enableMicrophone &&
                 MicrophoneCaptureManager.isBluetoothMicrophoneSelection(
                         this, prefConfig.microphoneDeviceId);
+    }
+
+    private int getMappedHostAndroidKeyCode(String configured) {
+        if (configured == null || configured.trim().length() != 1) {
+            return KeyEvent.KEYCODE_UNKNOWN;
+        }
+
+        String value = configured.trim().toUpperCase(Locale.US);
+        return KeyEvent.keyCodeFromString("KEYCODE_" + value);
+    }
+
+    @Override
+    public void setControllerKeyMappingPressed(int mappingIndex, boolean pressed) {
+        if (prefConfig == null || !prefConfig.enablePushToTalk ||
+                prefConfig.controllerKeyMappings == null ||
+                mappingIndex < 0 ||
+                mappingIndex >= prefConfig.controllerKeyMappings.size() ||
+                conn == null ||
+                keyboardTranslator == null) {
+            activeControllerKeyMappings.remove(mappingIndex);
+            return;
+        }
+
+        boolean alreadyPressed = activeControllerKeyMappings.contains(mappingIndex);
+        if (pressed == alreadyPressed) {
+            return;
+        }
+
+        PreferenceConfiguration.ControllerKeyMapping mapping =
+                prefConfig.controllerKeyMappings.get(mappingIndex);
+        int androidKeyCode = getMappedHostAndroidKeyCode(mapping.hostKey);
+        if (androidKeyCode == KeyEvent.KEYCODE_UNKNOWN) {
+            LimeLog.warning("Unable to translate controller mapping host key: " +
+                    mapping.hostKey);
+            return;
+        }
+
+        short translated = keyboardTranslator.translate(androidKeyCode, 0, -1);
+        if (translated == 0) {
+            LimeLog.warning("Unable to translate controller mapping host key: " +
+                    mapping.hostKey);
+            return;
+        }
+
+        conn.sendKeyboardInput(translated,
+                pressed ? KeyboardPacket.KEY_DOWN : KeyboardPacket.KEY_UP,
+                (byte) 0,
+                (byte) 0);
+
+        if (pressed) {
+            activeControllerKeyMappings.add(mappingIndex);
+        }
+        else {
+            activeControllerKeyMappings.remove(mappingIndex);
+        }
     }
 
     @Override
@@ -2163,9 +2236,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             return false;
         }
 
-        if (matchesPushToTalkButton(event)) {
+        int controllerKeyMappingIndex = findControllerKeyMappingIndex(event);
+        if (controllerKeyMappingIndex >= 0) {
             if (event.getRepeatCount() == 0) {
-                setPushToTalkPressed(true);
+                setControllerKeyMappingPressed(controllerKeyMappingIndex, true);
             }
             return true;
         }
@@ -2268,8 +2342,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             return false;
         }
 
-        if (matchesPushToTalkButton(event)) {
-            setPushToTalkPressed(false);
+        int controllerKeyMappingIndex = findControllerKeyMappingIndex(event);
+        if (controllerKeyMappingIndex >= 0) {
+            setControllerKeyMappingPressed(controllerKeyMappingIndex, false);
             return true;
         }
 
@@ -3586,7 +3661,15 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     public void stageComplete(String stage) {
     }
 
+    private void releaseActiveControllerKeyMappings() {
+        for (Integer mappingIndex : new ArrayList<>(activeControllerKeyMappings)) {
+            setControllerKeyMappingPressed(mappingIndex, false);
+        }
+        activeControllerKeyMappings.clear();
+    }
+
     private void stopConnection() {
+        releaseActiveControllerKeyMappings();
         setPushToTalkPressed(false);
         stopMicrophoneCapture();
 
