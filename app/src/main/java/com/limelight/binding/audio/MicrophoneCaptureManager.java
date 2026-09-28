@@ -996,8 +996,13 @@ public class MicrophoneCaptureManager {
             case AudioDeviceInfo.TYPE_WIRED_HEADSET:
                 return "Wired headset microphone";
             case AudioDeviceInfo.TYPE_USB_DEVICE:
-            case AudioDeviceInfo.TYPE_USB_HEADSET:
+            case AudioDeviceInfo.TYPE_USB_HEADSET: {
+                CharSequence usbProductName = deviceInfo.getProductName();
+                if (usbProductName != null && usbProductName.length() > 0) {
+                    return "USB microphone — " + usbProductName;
+                }
                 return "USB microphone";
+            }
             default:
                 CharSequence productName = deviceInfo.getProductName();
                 if (productName != null && productName.length() > 0) {
