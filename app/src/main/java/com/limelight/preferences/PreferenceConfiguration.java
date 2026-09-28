@@ -62,6 +62,7 @@ public class PreferenceConfiguration {
     static final String AUDIO_CONFIG_PREF_STRING = "list_audio_config";
     static final String ENABLE_MICROPHONE_PREF_STRING = "checkbox_enable_microphone";
     static final String MICROPHONE_DEVICE_PREF_STRING = "list_microphone_device";
+    private static final String KEEP_BLUETOOTH_MIC_ACTIVE_PREF_STRING = "checkbox_keep_bluetooth_microphone_active";
     private static final String USB_DRIVER_PREF_SRING = "checkbox_usb_driver";
     private static final String VIDEO_FORMAT_PREF_STRING = "video_format";
     private static final String ONSCREEN_CONTROLLER_PREF_STRING = "checkbox_show_onscreen_controls";
@@ -192,6 +193,7 @@ public class PreferenceConfiguration {
     private static final String DEFAULT_AUDIO_CONFIG = "2"; // Stereo
     private static final boolean DEFAULT_ENABLE_MICROPHONE = false;
     private static final String DEFAULT_MICROPHONE_DEVICE = "0";
+    private static final boolean DEFAULT_KEEP_BLUETOOTH_MIC_ACTIVE = false;
     private static final boolean DEFAULT_LATENCY_TOAST = false;
     private static final String DEFAULT_FRAME_PACING = "latency";
     private static final boolean DEFAULT_ABSOLUTE_MOUSE_MODE = false;
@@ -398,6 +400,7 @@ public class PreferenceConfiguration {
     public MoonBridge.AudioConfiguration audioConfiguration;
     public boolean enableMicrophone;
     public int microphoneDeviceId;
+    public boolean keepBluetoothMicrophoneActive;
     public int framePacing;
     public boolean absoluteMouseMode;
     public boolean enableAudioFx;
@@ -889,6 +892,7 @@ private static int getFramePacingValue(Context context) {
         config.enableMicrophone = prefs.getBoolean(ENABLE_MICROPHONE_PREF_STRING, DEFAULT_ENABLE_MICROPHONE);
         try {
             config.microphoneDeviceId = Integer.parseInt(prefs.getString(MICROPHONE_DEVICE_PREF_STRING, DEFAULT_MICROPHONE_DEVICE));
+        config.keepBluetoothMicrophoneActive = prefs.getBoolean(KEEP_BLUETOOTH_MIC_ACTIVE_PREF_STRING, DEFAULT_KEEP_BLUETOOTH_MIC_ACTIVE);
         }
         catch (NumberFormatException e) {
             config.microphoneDeviceId = 0;
