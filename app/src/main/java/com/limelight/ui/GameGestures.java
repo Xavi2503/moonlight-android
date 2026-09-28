@@ -11,5 +11,7 @@ public interface GameGestures {
 
     default void setPushToTalkPressed(boolean pressed){};
 
+    default void setControllerKeyMappingPressed(int mappingIndex, boolean pressed){};
+
     default void showGameMenu(GameInputDevice device){};
 }
