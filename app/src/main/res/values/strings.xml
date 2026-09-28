@@ -307,7 +307,7 @@
     <string name="summary_controller_keyboard_button_assigned">Assigned: %1$s</string>
     <string name="controller_keyboard_learn_prompt">Press the controller button you want to use for the virtual keyboard</string>
     <string name="controller_keyboard_button_saved">Keyboard button saved: %1$s</string>
-    <string name="controller_keyboard_button_conflict">That controller button is already assigned to push-to-talk</string>
+    <string name="controller_keyboard_button_conflict">That controller button is already used by a PC keyboard mapping.</string>
     <string name="push_to_talk_button_conflict">That controller button is already assigned to the keyboard shortcut</string>
     <string name="title_controller_keyboard_type">Keyboard to open</string>
     <string name="controller_keyboard_type_system">Android system keyboard</string>
