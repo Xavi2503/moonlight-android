@@ -1019,6 +1019,7 @@ public class StreamSettings extends AppCompatActivity {
                 PreferenceConfiguration.ControllerKeyMapping mapping = controllerKeyMappings.get(i);
 
                 EditTextPreference functionNamePreference = new EditTextPreference(requireContext());
+                functionNamePreference.setKey("controller_key_mapping_name_" + mappingIndex);
                 functionNamePreference.setPersistent(false);
                 functionNamePreference.setTitle(R.string.title_controller_key_mapping_name);
                 functionNamePreference.setSummary(
@@ -1048,6 +1049,7 @@ public class StreamSettings extends AppCompatActivity {
                 controllerKeyMappingsCategory.addPreference(functionNamePreference);
 
                 EditTextPreference hostKeyPreference = new EditTextPreference(requireContext());
+                hostKeyPreference.setKey("controller_key_mapping_host_" + mappingIndex);
                 hostKeyPreference.setPersistent(false);
                 hostKeyPreference.setTitle(R.string.title_controller_key_mapping_host);
                 hostKeyPreference.setSummary(getString(
