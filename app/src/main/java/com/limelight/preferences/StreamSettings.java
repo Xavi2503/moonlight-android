@@ -1018,6 +1018,32 @@ public class StreamSettings extends AppCompatActivity {
                 final int mappingIndex = i;
                 PreferenceConfiguration.ControllerKeyMapping mapping = controllerKeyMappings.get(i);
 
+                EditTextPreference functionNamePreference = new EditTextPreference(requireContext());
+                functionNamePreference.setPersistent(false);
+                functionNamePreference.setTitle(R.string.title_controller_key_mapping_name);
+                functionNamePreference.setSummary(
+                        mapping.functionName == null || mapping.functionName.trim().isEmpty()
+                                ? getString(R.string.summary_controller_key_mapping_name_empty)
+                                : getString(R.string.summary_controller_key_mapping_name,
+                                        mapping.functionName));
+                functionNamePreference.setText(mapping.functionName);
+                functionNamePreference.setOnBindEditTextListener(editText -> {
+                    editText.setSingleLine(true);
+                    editText.setInputType(InputType.TYPE_CLASS_TEXT |
+                            InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+                    editText.setFilters(new InputFilter[] { new InputFilter.LengthFilter(40) });
+                    editText.selectAll();
+                });
+                functionNamePreference.setOnPreferenceChangeListener((preference, newValue) -> {
+                    controllerKeyMappings.get(mappingIndex).functionName =
+                            String.valueOf(newValue).trim();
+                    PreferenceConfiguration.saveControllerKeyMappings(
+                            getPrefs(), controllerKeyMappings);
+                    rebuildControllerKeyMappingPreferences();
+                    return false;
+                });
+                controllerKeyMappingsCategory.addPreference(functionNamePreference);
+
                 EditTextPreference hostKeyPreference = new EditTextPreference(requireContext());
                 hostKeyPreference.setPersistent(false);
                 hostKeyPreference.setTitle(R.string.title_controller_key_mapping_host);
@@ -1094,7 +1120,7 @@ public class StreamSettings extends AppCompatActivity {
             addPreference.setSummary(R.string.summary_controller_key_mapping_add);
             addPreference.setOnPreferenceClickListener(preference -> {
                 controllerKeyMappings.add(
-                        new PreferenceConfiguration.ControllerKeyMapping("Z", 0, 0));
+                        new PreferenceConfiguration.ControllerKeyMapping("", "Z", 0, 0));
                 PreferenceConfiguration.saveControllerKeyMappings(
                         getPrefs(), controllerKeyMappings);
                 rebuildControllerKeyMappingPreferences();
