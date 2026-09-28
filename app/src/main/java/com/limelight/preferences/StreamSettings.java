@@ -66,6 +66,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Locale;
@@ -129,7 +130,7 @@ public class StreamSettings extends AppCompatActivity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (prefsFragment != null &&
-                (prefsFragment.capturePushToTalkButton(event) ||
+                (prefsFragment.captureControllerKeyMappingButton(event) ||
                         prefsFragment.captureControllerKeyboardButton(event))) {
             return true;
         }
@@ -195,6 +196,10 @@ public class StreamSettings extends AppCompatActivity {
         private EditTextPreference pushToTalkHostKeyPreference;
         private Preference pushToTalkButtonPreference;
         private boolean waitingForPushToTalkButton;
+
+        private PreferenceCategory controllerKeyMappingsCategory;
+        private ArrayList<PreferenceConfiguration.ControllerKeyMapping> controllerKeyMappings = new ArrayList<>();
+        private int waitingForControllerKeyMappingIndex = -1;
 
         private Preference controllerKeyboardButtonPreference;
         private Preference chooseAndroidKeyboardPreference;
@@ -429,7 +434,7 @@ public class StreamSettings extends AppCompatActivity {
             }
 
             initializeMicrophonePreferences(screen);
-            initializePushToTalkPreferences();
+            initializeControllerKeyMappingPreferences();
             initializeControllerKeyboardPreferences();
 
             // Fire TV apps are not allowed to use WebViews or browsers, so hide the Help category
@@ -995,6 +1000,189 @@ public class StreamSettings extends AppCompatActivity {
             }
         }
 
+        private void initializeControllerKeyMappingPreferences() {
+            controllerKeyMappingsCategory = findPreference("category_controller_key_mappings");
+            controllerKeyMappings = PreferenceConfiguration.getControllerKeyMappings(getPrefs());
+            rebuildControllerKeyMappingPreferences();
+        }
+
+        private void rebuildControllerKeyMappingPreferences() {
+            if (controllerKeyMappingsCategory == null) {
+                return;
+            }
+
+            waitingForControllerKeyMappingIndex = -1;
+            controllerKeyMappingsCategory.removeAll();
+
+            for (int i = 0; i < controllerKeyMappings.size(); i++) {
+                final int mappingIndex = i;
+                PreferenceConfiguration.ControllerKeyMapping mapping = controllerKeyMappings.get(i);
+
+                EditTextPreference hostKeyPreference = new EditTextPreference(requireContext());
+                hostKeyPreference.setPersistent(false);
+                hostKeyPreference.setTitle(R.string.title_controller_key_mapping_host);
+                hostKeyPreference.setSummary(getString(
+                        R.string.summary_controller_key_mapping_host, mapping.hostKey));
+                hostKeyPreference.setText(mapping.hostKey);
+                hostKeyPreference.setOnBindEditTextListener(editText -> {
+                    editText.setSingleLine(true);
+                    editText.setInputType(InputType.TYPE_CLASS_TEXT |
+                            InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+                    editText.setFilters(new InputFilter[] { new InputFilter.LengthFilter(1) });
+                    editText.selectAll();
+                });
+                hostKeyPreference.setOnPreferenceChangeListener((preference, newValue) -> {
+                    String value = String.valueOf(newValue).trim().toUpperCase(Locale.US);
+                    if (value.length() != 1 || !Character.isLetterOrDigit(value.charAt(0))) {
+                        Toast.makeText(requireContext(),
+                                R.string.push_to_talk_invalid_key,
+                                Toast.LENGTH_SHORT).show();
+                        return false;
+                    }
+
+                    controllerKeyMappings.get(mappingIndex).hostKey = value;
+                    PreferenceConfiguration.saveControllerKeyMappings(
+                            getPrefs(), controllerKeyMappings);
+                    rebuildControllerKeyMappingPreferences();
+                    return false;
+                });
+                controllerKeyMappingsCategory.addPreference(hostKeyPreference);
+
+                Preference buttonPreference = new Preference(requireContext());
+                buttonPreference.setPersistent(false);
+                buttonPreference.setTitle(R.string.title_controller_key_mapping_button);
+                if (mapping.controllerKeyCode == 0 && mapping.controllerScanCode == 0) {
+                    buttonPreference.setSummary(
+                            R.string.summary_controller_key_mapping_button_unassigned);
+                }
+                else {
+                    buttonPreference.setSummary(getString(
+                            R.string.summary_controller_key_mapping_button_assigned,
+                            describePushToTalkButton(
+                                    mapping.controllerKeyCode,
+                                    mapping.controllerScanCode)));
+                }
+                buttonPreference.setOnPreferenceClickListener(preference -> {
+                    waitingForControllerKeyboardButton = false;
+                    waitingForPushToTalkButton = false;
+                    waitingForControllerKeyMappingIndex = mappingIndex;
+                    preference.setSummary(R.string.controller_key_mapping_learn_prompt);
+                    Toast.makeText(requireContext(),
+                            R.string.controller_key_mapping_learn_prompt,
+                            Toast.LENGTH_LONG).show();
+                    return true;
+                });
+                controllerKeyMappingsCategory.addPreference(buttonPreference);
+
+                Preference removePreference = new Preference(requireContext());
+                removePreference.setPersistent(false);
+                removePreference.setTitle(R.string.title_controller_key_mapping_remove);
+                removePreference.setSummary(R.string.summary_controller_key_mapping_remove);
+                removePreference.setOnPreferenceClickListener(preference -> {
+                    controllerKeyMappings.remove(mappingIndex);
+                    PreferenceConfiguration.saveControllerKeyMappings(
+                            getPrefs(), controllerKeyMappings);
+                    rebuildControllerKeyMappingPreferences();
+                    return true;
+                });
+                controllerKeyMappingsCategory.addPreference(removePreference);
+            }
+
+            Preference addPreference = new Preference(requireContext());
+            addPreference.setPersistent(false);
+            addPreference.setTitle(R.string.title_controller_key_mapping_add);
+            addPreference.setSummary(R.string.summary_controller_key_mapping_add);
+            addPreference.setOnPreferenceClickListener(preference -> {
+                controllerKeyMappings.add(
+                        new PreferenceConfiguration.ControllerKeyMapping("Z", 0, 0));
+                PreferenceConfiguration.saveControllerKeyMappings(
+                        getPrefs(), controllerKeyMappings);
+                rebuildControllerKeyMappingPreferences();
+                return true;
+            });
+            controllerKeyMappingsCategory.addPreference(addPreference);
+        }
+
+        private int findControllerKeyMappingButton(int keyCode, int scanCode, int exceptIndex) {
+            for (int i = 0; i < controllerKeyMappings.size(); i++) {
+                if (i == exceptIndex) {
+                    continue;
+                }
+                PreferenceConfiguration.ControllerKeyMapping mapping =
+                        controllerKeyMappings.get(i);
+                if (mapping.matches(keyCode, scanCode)) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        boolean captureControllerKeyMappingButton(KeyEvent event) {
+            if (waitingForControllerKeyMappingIndex < 0 ||
+                    waitingForControllerKeyMappingIndex >= controllerKeyMappings.size()) {
+                return false;
+            }
+
+            int source = event.getSource();
+            boolean controllerSource =
+                    (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                    (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
+            if (!controllerSource && !isKishiV3ProXlInput(event)) {
+                return false;
+            }
+
+            if (event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0) {
+                return true;
+            }
+
+            int keyCode = event.getKeyCode();
+            int scanCode = event.getScanCode();
+            if ((keyCode == 0 || keyCode == KeyEvent.KEYCODE_UNKNOWN) && scanCode == 0) {
+                return true;
+            }
+
+            int keyboardKeyCode = getPrefs().getInt(
+                    PreferenceConfiguration.CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING, 0);
+            int keyboardScanCode = getPrefs().getInt(
+                    PreferenceConfiguration.CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING, 0);
+            if (sameControllerButton(keyCode, scanCode, keyboardKeyCode, keyboardScanCode)) {
+                waitingForControllerKeyMappingIndex = -1;
+                rebuildControllerKeyMappingPreferences();
+                Toast.makeText(requireContext(),
+                        R.string.controller_key_mapping_conflict_keyboard,
+                        Toast.LENGTH_LONG).show();
+                return true;
+            }
+
+            if (findControllerKeyMappingButton(
+                    keyCode, scanCode, waitingForControllerKeyMappingIndex) >= 0) {
+                waitingForControllerKeyMappingIndex = -1;
+                rebuildControllerKeyMappingPreferences();
+                Toast.makeText(requireContext(),
+                        R.string.controller_key_mapping_conflict_mapping,
+                        Toast.LENGTH_LONG).show();
+                return true;
+            }
+
+            PreferenceConfiguration.ControllerKeyMapping mapping =
+                    controllerKeyMappings.get(waitingForControllerKeyMappingIndex);
+            mapping.controllerKeyCode = keyCode;
+            mapping.controllerScanCode = scanCode;
+            String buttonName = describePushToTalkButton(keyCode, scanCode);
+            String hostKey = mapping.hostKey;
+
+            PreferenceConfiguration.saveControllerKeyMappings(
+                    getPrefs(), controllerKeyMappings);
+
+            waitingForControllerKeyMappingIndex = -1;
+            rebuildControllerKeyMappingPreferences();
+            Toast.makeText(requireContext(),
+                    getString(R.string.controller_key_mapping_saved,
+                            buttonName, hostKey),
+                    Toast.LENGTH_SHORT).show();
+            return true;
+        }
+
         private void initializePushToTalkPreferences() {
             pushToTalkHostKeyPreference = findPreference(PreferenceConfiguration.PUSH_TO_TALK_HOST_KEY_PREF_STRING);
             pushToTalkButtonPreference = findPreference("preference_learn_push_to_talk_button");
@@ -1052,6 +1240,12 @@ public class StreamSettings extends AppCompatActivity {
         }
 
         private String describePushToTalkButton(int keyCode, int scanCode) {
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_C) {
+                return "L4 — BUTTON_C";
+            }
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_Z) {
+                return "R4 — BUTTON_Z";
+            }
             if (keyCode != 0 && keyCode != KeyEvent.KEYCODE_UNKNOWN) {
                 String name = KeyEvent.keyCodeToString(keyCode);
                 if (name.startsWith("KEYCODE_")) {
@@ -1216,14 +1410,13 @@ public class StreamSettings extends AppCompatActivity {
                 return true;
             }
 
-            int pttKeyCode = getPrefs().getInt(
-                    PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, 0);
-            int pttScanCode = getPrefs().getInt(
-                    PreferenceConfiguration.PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING, 0);
-            if (sameControllerButton(keyCode, scanCode, pttKeyCode, pttScanCode)) {
+            controllerKeyMappings = PreferenceConfiguration.getControllerKeyMappings(getPrefs());
+            if (findControllerKeyMappingButton(keyCode, scanCode, -1) >= 0) {
                 waitingForControllerKeyboardButton = false;
                 updateControllerKeyboardButtonSummary();
-                Toast.makeText(requireContext(), R.string.controller_keyboard_button_conflict, Toast.LENGTH_LONG).show();
+                Toast.makeText(requireContext(),
+                        R.string.controller_keyboard_button_conflict,
+                        Toast.LENGTH_LONG).show();
                 return true;
             }
 
