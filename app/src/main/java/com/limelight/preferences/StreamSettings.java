@@ -1035,12 +1035,15 @@ public class StreamSettings extends AppCompatActivity {
                     editText.selectAll();
                 });
                 functionNamePreference.setOnPreferenceChangeListener((preference, newValue) -> {
-                    controllerKeyMappings.get(mappingIndex).functionName =
-                            String.valueOf(newValue).trim();
+                    String value = String.valueOf(newValue).trim();
+                    controllerKeyMappings.get(mappingIndex).functionName = value;
                     PreferenceConfiguration.saveControllerKeyMappings(
                             getPrefs(), controllerKeyMappings);
-                    rebuildControllerKeyMappingPreferences();
-                    return false;
+                    preference.setSummary(
+                            value.isEmpty()
+                                    ? getString(R.string.summary_controller_key_mapping_name_empty)
+                                    : getString(R.string.summary_controller_key_mapping_name, value));
+                    return true;
                 });
                 controllerKeyMappingsCategory.addPreference(functionNamePreference);
 
@@ -1069,8 +1072,9 @@ public class StreamSettings extends AppCompatActivity {
                     controllerKeyMappings.get(mappingIndex).hostKey = value;
                     PreferenceConfiguration.saveControllerKeyMappings(
                             getPrefs(), controllerKeyMappings);
-                    rebuildControllerKeyMappingPreferences();
-                    return false;
+                    preference.setSummary(getString(
+                            R.string.summary_controller_key_mapping_host, value));
+                    return true;
                 });
                 controllerKeyMappingsCategory.addPreference(hostKeyPreference);
 
