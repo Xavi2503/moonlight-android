@@ -2103,7 +2103,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             return;
         }
 
-        final boolean bluetoothPttMic = isBluetoothMicrophoneSelected();
+        final boolean bluetoothPttMic = isBluetoothMicrophoneSelected() && !prefConfig.keepBluetoothMicrophoneActive;
 
         if (pressed && bluetoothPttMic) {
             if (!MicrophoneCaptureManager.hasRecordAudioPermission(this)) {
@@ -3648,11 +3648,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             microphoneCaptureManager = new MicrophoneCaptureManager(this);
         }
 
-        // With controller PTT enabled, keep the host microphone stream alive
+        // In legacy Bluetooth PTT-gated mode, keep the host microphone stream alive
         // continuously using digital silence, but leave the physical Bluetooth
-        // HFP capture closed until PTT is pressed. This keeps COD's input device
-        // stable without sacrificing full-quality A2DP game audio.
-        if (prefConfig.enablePushToTalk && isBluetoothMicrophoneSelected()) {
+        // HFP capture closed until the mapped controller key is pressed. When
+        // keepBluetoothMicrophoneActive is enabled, capture starts normally below
+        // and the controller mapping only sends its configured PC keyboard key.
+        if (prefConfig.enablePushToTalk && isBluetoothMicrophoneSelected() && !prefConfig.keepBluetoothMicrophoneActive) {
             if (!microphoneCaptureManager.prepareStreaming()) {
                 LimeLog.warning("Unable to prepare persistent Bluetooth microphone host stream");
                 displayTransientMessage(getString(R.string.microphone_stream_start_failed));
