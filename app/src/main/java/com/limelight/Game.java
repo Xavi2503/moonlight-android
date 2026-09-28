@@ -236,6 +236,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private MicrophoneCaptureManager microphoneCaptureManager;
     private boolean pushToTalkActive;
     private final Set<Integer> activeControllerKeyMappings = new HashSet<>();
+    private final Set<Integer> activeBluetoothMicPttMappings = new HashSet<>();
 
     private WifiManager.WifiLock highPerfWifiLock;
     private WifiManager.WifiLock lowLatencyWifiLock;
@@ -2102,6 +2103,20 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         this, prefConfig.microphoneDeviceId);
     }
 
+    private boolean hasBluetoothMicPttMapping() {
+        if (prefConfig == null || prefConfig.controllerKeyMappings == null) {
+            return false;
+        }
+
+        for (PreferenceConfiguration.ControllerKeyMapping mapping :
+                prefConfig.controllerKeyMappings) {
+            if (mapping != null && mapping.useBluetoothMicPtt) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private int getMappedHostAndroidKeyCode(String configured) {
         if (configured == null || configured.trim().length() != 1) {
             return KeyEvent.KEYCODE_UNKNOWN;
@@ -2120,6 +2135,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 conn == null ||
                 keyboardTranslator == null) {
             activeControllerKeyMappings.remove(mappingIndex);
+            activeBluetoothMicPttMappings.remove(mappingIndex);
             return;
         }
 
@@ -2144,6 +2160,42 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             return;
         }
 
+        final boolean bluetoothMicPtt =
+                mapping.useBluetoothMicPtt && isBluetoothMicrophoneSelected();
+
+        if (pressed && bluetoothMicPtt) {
+            if (!MicrophoneCaptureManager.hasRecordAudioPermission(this)) {
+                displayTransientMessage(getString(
+                        R.string.microphone_stream_permission_revoked));
+                return;
+            }
+
+            if (!MoonBridge.isMicrophoneStreamActive()) {
+                displayTransientMessage(getString(
+                        R.string.microphone_host_not_negotiated));
+                return;
+            }
+
+            if (microphoneCaptureManager == null) {
+                microphoneCaptureManager = new MicrophoneCaptureManager(this);
+            }
+
+            // A per-mapping Bluetooth PTT setting takes priority over the old
+            // "keep active" behavior. Bring HFP up before the PC key-down reaches
+            // the game so the headset microphone is live when in-game PTT opens.
+            if (activeBluetoothMicPttMappings.isEmpty() &&
+                    !microphoneCaptureManager.startStreaming(
+                            prefConfig.microphoneDeviceId, null)) {
+                LimeLog.warning(
+                        "Unable to start Bluetooth microphone for controller mapping");
+                displayTransientMessage(getString(
+                        R.string.microphone_stream_start_failed));
+                return;
+            }
+
+            activeBluetoothMicPttMappings.add(mappingIndex);
+        }
+
         conn.sendKeyboardInput(translated,
                 pressed ? KeyboardPacket.KEY_DOWN : KeyboardPacket.KEY_UP,
                 (byte) 0,
@@ -2154,6 +2206,16 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
         else {
             activeControllerKeyMappings.remove(mappingIndex);
+
+            if (bluetoothMicPtt) {
+                activeBluetoothMicPttMappings.remove(mappingIndex);
+                if (activeBluetoothMicPttMappings.isEmpty() &&
+                        microphoneCaptureManager != null) {
+                    // Release HFP immediately after the final Bluetooth PTT mapping
+                    // is released so Android can return to full-quality A2DP.
+                    microphoneCaptureManager.pauseStreamingCapture();
+                }
+            }
         }
     }
 
@@ -3666,6 +3728,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             setControllerKeyMappingPressed(mappingIndex, false);
         }
         activeControllerKeyMappings.clear();
+        activeBluetoothMicPttMappings.clear();
     }
 
     private void stopConnection() {
@@ -3731,12 +3794,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             microphoneCaptureManager = new MicrophoneCaptureManager(this);
         }
 
-        // In legacy Bluetooth PTT-gated mode, keep the host microphone stream alive
-        // continuously using digital silence, but leave the physical Bluetooth
-        // HFP capture closed until the mapped controller key is pressed. When
-        // keepBluetoothMicrophoneActive is enabled, capture starts normally below
-        // and the controller mapping only sends its configured PC keyboard key.
-        if (prefConfig.enablePushToTalk && isBluetoothMicrophoneSelected() && !prefConfig.keepBluetoothMicrophoneActive) {
+        // If a controller mapping is marked as Bluetooth Mic PTT, keep only the
+        // host microphone stream alive with digital silence. The physical HFP
+        // microphone opens only while that mapping is held. This takes priority
+        // over "Keep Bluetooth microphone active" to preserve full-quality A2DP
+        // whenever the user isn't speaking.
+        if (prefConfig.enablePushToTalk && isBluetoothMicrophoneSelected() &&
+                hasBluetoothMicPttMapping()) {
             if (!microphoneCaptureManager.prepareStreaming()) {
                 LimeLog.warning("Unable to prepare persistent Bluetooth microphone host stream");
                 displayTransientMessage(getString(R.string.microphone_stream_start_failed));
