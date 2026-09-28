@@ -40,17 +40,25 @@ public class PreferenceConfiguration {
         public String hostKey;
         public int controllerKeyCode;
         public int controllerScanCode;
+        public boolean useBluetoothMicPtt;
 
         public ControllerKeyMapping(String hostKey, int controllerKeyCode, int controllerScanCode) {
-            this("", hostKey, controllerKeyCode, controllerScanCode);
+            this("", hostKey, controllerKeyCode, controllerScanCode, false);
         }
 
         public ControllerKeyMapping(String functionName, String hostKey,
                                     int controllerKeyCode, int controllerScanCode) {
+            this(functionName, hostKey, controllerKeyCode, controllerScanCode, false);
+        }
+
+        public ControllerKeyMapping(String functionName, String hostKey,
+                                    int controllerKeyCode, int controllerScanCode,
+                                    boolean useBluetoothMicPtt) {
             this.functionName = functionName != null ? functionName.trim() : "";
             this.hostKey = normalizeControllerHostKey(hostKey);
             this.controllerKeyCode = controllerKeyCode;
             this.controllerScanCode = controllerScanCode;
+            this.useBluetoothMicPtt = useBluetoothMicPtt;
         }
 
         public boolean matches(int keyCode, int scanCode) {
@@ -799,7 +807,9 @@ private static int getFramePacingValue(Context context) {
                     .append(',')
                     .append(mapping.controllerScanCode)
                     .append(',')
-                    .append(encodeControllerMappingName(mapping.functionName));
+                    .append(encodeControllerMappingName(mapping.functionName))
+                    .append(',')
+                    .append(mapping.useBluetoothMicPtt ? "1" : "0");
         }
         return builder.toString();
     }
@@ -812,18 +822,21 @@ private static int getFramePacingValue(Context context) {
 
         for (String entry : encoded.split(";")) {
             String[] fields = entry.split(",", -1);
-            if (fields.length != 3 && fields.length != 4) {
+            if (fields.length != 3 && fields.length != 4 && fields.length != 5) {
                 continue;
             }
             try {
-                String functionName = fields.length == 4
+                String functionName = fields.length >= 4
                         ? decodeControllerMappingName(fields[3])
                         : "";
+                boolean useBluetoothMicPtt = fields.length >= 5 &&
+                        "1".equals(fields[4]);
                 mappings.add(new ControllerKeyMapping(
                         functionName,
                         fields[0],
                         Integer.parseInt(fields[1]),
-                        Integer.parseInt(fields[2])));
+                        Integer.parseInt(fields[2]),
+                        useBluetoothMicPtt));
             }
             catch (NumberFormatException ignored) {
             }
