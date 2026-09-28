@@ -9,6 +9,10 @@ import android.view.Display;
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.profiles.ProfilesManager;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
 public class PreferenceConfiguration {
 
     public enum ScaleMode {
@@ -28,6 +32,27 @@ public class PreferenceConfiguration {
         NONE,
         RIGHT,
         LEFT
+    }
+
+    public static final class ControllerKeyMapping {
+        public String hostKey;
+        public int controllerKeyCode;
+        public int controllerScanCode;
+
+        public ControllerKeyMapping(String hostKey, int controllerKeyCode, int controllerScanCode) {
+            this.hostKey = normalizeControllerHostKey(hostKey);
+            this.controllerKeyCode = controllerKeyCode;
+            this.controllerScanCode = controllerScanCode;
+        }
+
+        public boolean matches(int keyCode, int scanCode) {
+            boolean validConfiguredKey = controllerKeyCode != 0 &&
+                    controllerKeyCode != android.view.KeyEvent.KEYCODE_UNKNOWN;
+            if (validConfiguredKey && keyCode == controllerKeyCode) {
+                return true;
+            }
+            return controllerScanCode != 0 && scanCode == controllerScanCode;
+        }
     }
 
     public static final String CUSTOM_BITRATE_PREF_STRING = "edit_diy_bitrate";
@@ -104,6 +129,8 @@ public class PreferenceConfiguration {
     public static final String PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING = "push_to_talk_controller_keycode";
     public static final String PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING = "push_to_talk_controller_scancode";
     public static final String PUSH_TO_TALK_HOST_KEY_PREF_STRING = "edit_push_to_talk_host_key";
+    public static final String CONTROLLER_KEY_MAPPINGS_PREF_STRING = "controller_key_mappings_v1";
+    private static final String CONTROLLER_KEY_MAPPINGS_MIGRATED_PREF_STRING = "controller_key_mappings_migrated_v1";
     public static final String ENABLE_CONTROLLER_KEYBOARD_PREF_STRING = "checkbox_enable_controller_keyboard";
     public static final String CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING = "controller_keyboard_keycode";
     public static final String CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING = "controller_keyboard_scancode";
@@ -277,6 +304,7 @@ public class PreferenceConfiguration {
     public boolean hideOSCWhenHasGamepad;
     public boolean enableBatteryReport;
     public boolean enablePushToTalk;
+    public ArrayList<ControllerKeyMapping> controllerKeyMappings = new ArrayList<>();
     public int pushToTalkControllerKeyCode;
     public int pushToTalkControllerScanCode;
     public String pushToTalkHostKey;
@@ -716,6 +744,115 @@ private static int getFramePacingValue(Context context) {
         }
     }
 
+    private static String normalizeControllerHostKey(String hostKey) {
+        if (hostKey == null) {
+            return "Z";
+        }
+        String value = hostKey.trim().toUpperCase(Locale.US);
+        if (value.length() != 1 || !Character.isLetterOrDigit(value.charAt(0))) {
+            return "Z";
+        }
+        return value;
+    }
+
+    private static String encodeControllerKeyMappings(List<ControllerKeyMapping> mappings) {
+        StringBuilder builder = new StringBuilder();
+        for (ControllerKeyMapping mapping : mappings) {
+            if (mapping == null) {
+                continue;
+            }
+            if (builder.length() != 0) {
+                builder.append(';');
+            }
+            builder.append(normalizeControllerHostKey(mapping.hostKey))
+                    .append(',')
+                    .append(mapping.controllerKeyCode)
+                    .append(',')
+                    .append(mapping.controllerScanCode);
+        }
+        return builder.toString();
+    }
+
+    private static ArrayList<ControllerKeyMapping> decodeControllerKeyMappings(String encoded) {
+        ArrayList<ControllerKeyMapping> mappings = new ArrayList<>();
+        if (encoded == null || encoded.trim().isEmpty()) {
+            return mappings;
+        }
+
+        for (String entry : encoded.split(";")) {
+            String[] fields = entry.split(",", -1);
+            if (fields.length != 3) {
+                continue;
+            }
+            try {
+                mappings.add(new ControllerKeyMapping(
+                        fields[0],
+                        Integer.parseInt(fields[1]),
+                        Integer.parseInt(fields[2])));
+            }
+            catch (NumberFormatException ignored) {
+            }
+        }
+        return mappings;
+    }
+
+    private static void migrateControllerKeyMappingsIfNeeded(SharedPreferences prefs) {
+        if (prefs.getBoolean(CONTROLLER_KEY_MAPPINGS_MIGRATED_PREF_STRING, false)) {
+            return;
+        }
+
+        int legacyKeyCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING,
+                DEFAULT_PUSH_TO_TALK_CONTROLLER_KEYCODE);
+        int legacyScanCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING,
+                DEFAULT_PUSH_TO_TALK_CONTROLLER_SCANCODE);
+        String legacyHostKey = prefs.getString(PUSH_TO_TALK_HOST_KEY_PREF_STRING,
+                DEFAULT_PUSH_TO_TALK_HOST_KEY);
+
+        int keyboardKeyCode = prefs.getInt(CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING,
+                DEFAULT_CONTROLLER_KEYBOARD_KEYCODE);
+        int keyboardScanCode = prefs.getInt(CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING,
+                DEFAULT_CONTROLLER_KEYBOARD_SCANCODE);
+
+        boolean legacyAssigned = legacyKeyCode != 0 || legacyScanCode != 0;
+        boolean keyboardAssigned = keyboardKeyCode != 0 || keyboardScanCode != 0;
+
+        // Existing TITAN/Artemis installs used L4 for the PC key and R4 for the
+        // virtual keyboard. The redesigned controls intentionally swap those:
+        // L4 opens the keyboard, while the previous keyboard button becomes
+        // Mapping 1. Other custom layouts are preserved as-is where possible.
+        int mappingKeyCode = legacyKeyCode;
+        int mappingScanCode = legacyScanCode;
+        SharedPreferences.Editor editor = prefs.edit();
+
+        if (legacyAssigned && keyboardAssigned) {
+            mappingKeyCode = keyboardKeyCode;
+            mappingScanCode = keyboardScanCode;
+            editor.putInt(CONTROLLER_KEYBOARD_KEYCODE_PREF_STRING, legacyKeyCode);
+            editor.putInt(CONTROLLER_KEYBOARD_SCANCODE_PREF_STRING, legacyScanCode);
+        }
+
+        ArrayList<ControllerKeyMapping> mappings = new ArrayList<>();
+        mappings.add(new ControllerKeyMapping(legacyHostKey, mappingKeyCode, mappingScanCode));
+        editor.putString(CONTROLLER_KEY_MAPPINGS_PREF_STRING, encodeControllerKeyMappings(mappings));
+        editor.putBoolean(CONTROLLER_KEY_MAPPINGS_MIGRATED_PREF_STRING, true);
+        editor.apply();
+    }
+
+    public static ArrayList<ControllerKeyMapping> getControllerKeyMappings(SharedPreferences prefs) {
+        migrateControllerKeyMappingsIfNeeded(prefs);
+        return decodeControllerKeyMappings(
+                prefs.getString(CONTROLLER_KEY_MAPPINGS_PREF_STRING, ""));
+    }
+
+    public static void saveControllerKeyMappings(SharedPreferences prefs,
+                                                  List<ControllerKeyMapping> mappings) {
+        prefs.edit()
+                .putString(CONTROLLER_KEY_MAPPINGS_PREF_STRING,
+                        encodeControllerKeyMappings(mappings))
+                .putBoolean(CONTROLLER_KEY_MAPPINGS_MIGRATED_PREF_STRING, true)
+                .apply();
+    }
+
     public static void resetStreamingSettings(Context context) {
         // We consider resolution, FPS, bitrate, HDR, and video format as "streaming settings" here
         SharedPreferences prefs = ProfilesManager.getInstance().getOverlayingSharedPreferences(context);
@@ -1069,6 +1206,7 @@ private static int getFramePacingValue(Context context) {
         config.forceMotionSensorsFallbackToDevice = prefs.getBoolean(FORCE_MOTION_SENSORS_FALLBACK_PREF_STRING, DEFAULT_FORCE_MOTION_SENSORS_FALLBACK);
         config.enableRumble = prefs.getBoolean(ENABLE_RUMBLE_PREF_STRING, DEFAULT_ENABLE_RUMBLE);
         config.enablePushToTalk = prefs.getBoolean(ENABLE_PUSH_TO_TALK_PREF_STRING, DEFAULT_ENABLE_PUSH_TO_TALK);
+        config.controllerKeyMappings = getControllerKeyMappings(prefs);
         config.pushToTalkControllerKeyCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_KEYCODE_PREF_STRING, DEFAULT_PUSH_TO_TALK_CONTROLLER_KEYCODE);
         config.pushToTalkControllerScanCode = prefs.getInt(PUSH_TO_TALK_CONTROLLER_SCANCODE_PREF_STRING, DEFAULT_PUSH_TO_TALK_CONTROLLER_SCANCODE);
         config.pushToTalkHostKey = prefs.getString(PUSH_TO_TALK_HOST_KEY_PREF_STRING, DEFAULT_PUSH_TO_TALK_HOST_KEY);
