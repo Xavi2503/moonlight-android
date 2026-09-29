@@ -295,8 +295,8 @@
     <string name="title_controller_key_mapping_button">Select Controller Button</string>
     <string name="summary_controller_key_mapping_button_unassigned">Not assigned. Tap here, then press a controller button.</string>
     <string name="summary_controller_key_mapping_button_assigned">Assigned: %1$s</string>
-    <string name="title_controller_key_mapping_bluetooth_mic_ptt">Use for Bluetooth Mic PTT</string>
-    <string name="summary_controller_key_mapping_bluetooth_mic_ptt">With a Bluetooth headset mic, activate HFP only while this controller button is held. USB microphones stay active normally.</string>
+    <string name="title_controller_key_mapping_bluetooth_mic_ptt">Use for microphone PTT</string>
+    <string name="summary_controller_key_mapping_bluetooth_mic_ptt">Open the selected microphone only while this controller button is held. Tablet mic keeps Bluetooth playback in full-quality A2DP; headset mic temporarily uses communication audio.</string>
     <string name="title_controller_key_mapping_remove">Remove</string>
     <string name="summary_controller_key_mapping_remove">Remove this controller-to-keyboard mapping</string>
     <string name="title_controller_key_mapping_add">+ ADD</string>
