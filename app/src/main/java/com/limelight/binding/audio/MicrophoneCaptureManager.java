@@ -71,6 +71,7 @@ public class MicrophoneCaptureManager {
     private Thread silenceKeepaliveThread;
     private volatile boolean firstPcmQueued;
     private volatile boolean transmitCapturedAudio = true;
+    private volatile long transmitEnableAtElapsedMs;
     private LevelListener levelListener;
     private String currentStatus;
     private double currentLevel;
@@ -200,16 +201,22 @@ public class MicrophoneCaptureManager {
 
     public boolean startStreaming(int preferredDeviceId, LevelListener listener) {
         transmitCapturedAudio = true;
+        transmitEnableAtElapsedMs = 0;
         return startCapture(preferredDeviceId, listener, true);
     }
 
     public boolean startStreamingMuted(int preferredDeviceId, LevelListener listener) {
         transmitCapturedAudio = false;
+        transmitEnableAtElapsedMs = 0;
         return startCapture(preferredDeviceId, listener, true);
     }
 
     public void setTransmitCapturedAudio(boolean enabled) {
         transmitCapturedAudio = enabled;
+        // The mic is already running in tablet PTT mode. Delay only the digital
+        // gate by 30 ms to mask the controller button's physical click/transient.
+        // This does not delay controller input or the host PTT key.
+        transmitEnableAtElapsedMs = enabled ? SystemClock.elapsedRealtime() + 30 : 0;
     }
 
     public boolean isLocalCaptureRunning() {
@@ -535,7 +542,10 @@ public class MicrophoneCaptureManager {
                 // times and gate only the PCM sent to the host. This avoids opening
                 // the microphone from the controller input path and prevents the
                 // resulting input stall/startup transient when PTT is pressed.
-                short[] queuedPcm = transmitCapturedAudio ? pcmToQueue : mutedHostBuffer;
+                boolean transmitNow = transmitCapturedAudio &&
+                        (transmitEnableAtElapsedMs == 0 ||
+                                SystemClock.elapsedRealtime() >= transmitEnableAtElapsedMs);
+                short[] queuedPcm = transmitNow ? pcmToQueue : mutedHostBuffer;
                 int queued = MoonBridge.queueMicrophonePcm(queuedPcm, samplesToQueue);
                 if (queued < 0) {
                     LimeLog.warning("Failed to queue microphone PCM data for native encoding");
