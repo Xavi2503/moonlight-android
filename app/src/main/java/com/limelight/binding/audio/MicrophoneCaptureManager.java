@@ -177,7 +177,7 @@ public class MicrophoneCaptureManager {
                     if (isBluetoothHeadsetDevice(deviceInfo)) {
                         String label = deviceInfo.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET ?
                                 "Bluetooth LE Audio headset microphone" :
-                                "Bluetooth headset microphone";
+                                "Bluetooth headset microphone — communication audio during PTT";
                         uniqueEntries.put(label,
                                 new InputDeviceEntry(DEVICE_ID_BLUETOOTH_HEADSET, label));
                         break;
@@ -986,9 +986,9 @@ public class MicrophoneCaptureManager {
     private static String describeDevice(AudioDeviceInfo deviceInfo) {
         switch (deviceInfo.getType()) {
             case AudioDeviceInfo.TYPE_BUILTIN_MIC:
-                return "Built-in microphone";
+                return "Tablet microphone — keeps Bluetooth audio in high quality";
             case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
-                return "Bluetooth headset microphone (direct)";
+                return "Bluetooth headset microphone — communication audio during PTT";
             case AudioDeviceInfo.TYPE_BLE_HEADSET:
                 return "Bluetooth LE Audio headset microphone";
             case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
