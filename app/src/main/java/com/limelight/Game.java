@@ -2166,6 +2166,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         final boolean microphonePtt =
                 mapping.useBluetoothMicPtt && prefConfig.enableMicrophone;
 
+        final boolean bluetoothMicrophonePtt =
+                microphonePtt && isBluetoothMicrophoneSelected();
+
         if (pressed && microphonePtt) {
             if (!MicrophoneCaptureManager.hasRecordAudioPermission(this)) {
                 displayTransientMessage(getString(
@@ -2183,17 +2186,30 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 microphoneCaptureManager = new MicrophoneCaptureManager(this);
             }
 
-            // Open only the selected physical microphone while PTT is held.
-            // Tablet/built-in capture leaves Bluetooth playback on A2DP.
-            // Bluetooth headset capture establishes HFP here.
-            if (activeMicrophonePttMappings.isEmpty() &&
-                    !microphoneCaptureManager.startStreaming(
+            if (activeMicrophonePttMappings.isEmpty()) {
+                if (bluetoothMicrophonePtt) {
+                    // A Bluetooth headset mic must establish HFP when PTT is held.
+                    if (!microphoneCaptureManager.startStreaming(
                             prefConfig.microphoneDeviceId, null)) {
-                LimeLog.warning(
-                        "Unable to start selected microphone for controller mapping");
-                displayTransientMessage(getString(
-                        R.string.microphone_stream_start_failed));
-                return;
+                        LimeLog.warning(
+                                "Unable to start Bluetooth microphone for controller mapping");
+                        displayTransientMessage(getString(
+                                R.string.microphone_stream_start_failed));
+                        return;
+                    }
+                }
+                else {
+                    // Tablet/non-Bluetooth PTT is pre-opened at stream start.
+                    // Never start AudioRecord from the controller input path.
+                    if (!microphoneCaptureManager.isLocalCaptureRunning()) {
+                        LimeLog.warning(
+                                "Pre-opened tablet microphone capture is not running");
+                        displayTransientMessage(getString(
+                                R.string.microphone_stream_start_failed));
+                        return;
+                    }
+                    microphoneCaptureManager.setTransmitCapturedAudio(true);
+                }
             }
 
             activeMicrophonePttMappings.add(mappingIndex);
@@ -2214,10 +2230,15 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 activeMicrophonePttMappings.remove(mappingIndex);
                 if (activeMicrophonePttMappings.isEmpty() &&
                         microphoneCaptureManager != null) {
-                    // Close only the physical microphone after the final PTT
-                    // mapping is released. The host stream stays alive with
-                    // digital silence. For Bluetooth this also releases HFP.
-                    microphoneCaptureManager.pauseStreamingCapture();
+                    if (bluetoothMicrophonePtt) {
+                        // Bluetooth headset: close HFP so A2DP quality returns.
+                        microphoneCaptureManager.pauseStreamingCapture();
+                    }
+                    else {
+                        // Tablet/non-Bluetooth: keep AudioRecord warm and switch
+                        // back to digital silence. No controller or audio-route stall.
+                        microphoneCaptureManager.setTransmitCapturedAudio(false);
+                    }
                 }
             }
         }
@@ -2243,6 +2264,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
 
         final boolean microphonePtt = prefConfig.enableMicrophone;
+        final boolean bluetoothMicrophonePtt =
+                microphonePtt && isBluetoothMicrophoneSelected();
 
         if (pressed && microphonePtt) {
             if (!MicrophoneCaptureManager.hasRecordAudioPermission(this)) {
@@ -2259,13 +2282,21 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 microphoneCaptureManager = new MicrophoneCaptureManager(this);
             }
 
-            // Start the selected microphone before key-down reaches the game.
-            // The tablet mic does not touch Bluetooth routing; a headset mic
-            // establishes HFP here.
-            if (!microphoneCaptureManager.startStreaming(prefConfig.microphoneDeviceId, null)) {
-                LimeLog.warning("Unable to start selected microphone for push-to-talk");
-                displayTransientMessage(getString(R.string.microphone_stream_start_failed));
-                return;
+            if (bluetoothMicrophonePtt) {
+                if (!microphoneCaptureManager.startStreaming(
+                        prefConfig.microphoneDeviceId, null)) {
+                    LimeLog.warning("Unable to start Bluetooth microphone for push-to-talk");
+                    displayTransientMessage(getString(R.string.microphone_stream_start_failed));
+                    return;
+                }
+            }
+            else {
+                if (!microphoneCaptureManager.isLocalCaptureRunning()) {
+                    LimeLog.warning("Pre-opened tablet microphone capture is not running");
+                    displayTransientMessage(getString(R.string.microphone_stream_start_failed));
+                    return;
+                }
+                microphoneCaptureManager.setTransmitCapturedAudio(true);
             }
         }
 
@@ -2275,12 +2306,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 (byte) 0);
         pushToTalkActive = pressed;
 
-        if (!pressed && microphonePtt) {
-            // Stop only the local physical capture. The host microphone stream
-            // remains alive with digital silence. For Bluetooth this also
-            // releases HFP and restores full-quality A2DP.
-            if (microphoneCaptureManager != null) {
+        if (!pressed && microphonePtt && microphoneCaptureManager != null) {
+            if (bluetoothMicrophonePtt) {
                 microphoneCaptureManager.pauseStreamingCapture();
+            }
+            else {
+                microphoneCaptureManager.setTransmitCapturedAudio(false);
             }
         }
     }
@@ -3798,32 +3829,37 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             microphoneCaptureManager = new MicrophoneCaptureManager(this);
         }
 
-        // With microphone PTT, keep the host-side microphone stream alive using
-        // digital silence, but keep the selected physical microphone closed until
-        // the assigned controller button is held. This works for both tablet and
-        // Bluetooth headset microphones.
-        if (prefConfig.enablePushToTalk && hasMicrophonePttMapping()) {
-            if (!microphoneCaptureManager.prepareStreaming()) {
-                LimeLog.warning("Unable to prepare persistent PTT microphone host stream");
-                displayTransientMessage(getString(R.string.microphone_stream_start_failed));
-            }
-            else {
-                LimeLog.info("Prepared PTT microphone stream with silent keepalive");
-            }
-            return;
-        }
-
         boolean hasLegacyPttButton =
                 (prefConfig.pushToTalkControllerKeyCode != 0 &&
                         prefConfig.pushToTalkControllerKeyCode != KeyEvent.KEYCODE_UNKNOWN) ||
                 prefConfig.pushToTalkControllerScanCode != 0;
-        if (prefConfig.enablePushToTalk && hasLegacyPttButton) {
-            if (!microphoneCaptureManager.prepareStreaming()) {
-                LimeLog.warning("Unable to prepare legacy PTT microphone host stream");
-                displayTransientMessage(getString(R.string.microphone_stream_start_failed));
+        boolean microphonePttConfigured = prefConfig.enablePushToTalk &&
+                (hasMicrophonePttMapping() || hasLegacyPttButton);
+
+        if (microphonePttConfigured) {
+            if (isBluetoothMicrophoneSelected()) {
+                // Bluetooth headset mic stays physically closed until PTT to
+                // preserve full-quality A2DP outside speaking.
+                if (!microphoneCaptureManager.prepareStreaming()) {
+                    LimeLog.warning("Unable to prepare Bluetooth PTT host stream");
+                    displayTransientMessage(getString(R.string.microphone_stream_start_failed));
+                }
+                else {
+                    LimeLog.info("Prepared Bluetooth PTT host stream with silent keepalive");
+                }
             }
             else {
-                LimeLog.info("Prepared legacy PTT microphone stream with silent keepalive");
+                // Tablet/non-Bluetooth mic is opened once and kept warm for the
+                // whole stream, but only digital silence is sent until PTT.
+                // This keeps controller input completely out of AudioRecord startup.
+                if (!microphoneCaptureManager.startStreamingMuted(
+                        prefConfig.microphoneDeviceId, null)) {
+                    LimeLog.warning("Unable to pre-open tablet PTT microphone");
+                    displayTransientMessage(getString(R.string.microphone_stream_start_failed));
+                }
+                else {
+                    LimeLog.info("Pre-opened tablet PTT microphone with digital mute");
+                }
             }
             return;
         }
