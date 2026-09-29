@@ -70,6 +70,7 @@ public class MicrophoneCaptureManager {
     private volatile boolean silenceKeepaliveRunning;
     private Thread silenceKeepaliveThread;
     private volatile boolean firstPcmQueued;
+    private volatile boolean transmitCapturedAudio = true;
     private LevelListener levelListener;
     private String currentStatus;
     private double currentLevel;
@@ -198,7 +199,21 @@ public class MicrophoneCaptureManager {
     }
 
     public boolean startStreaming(int preferredDeviceId, LevelListener listener) {
+        transmitCapturedAudio = true;
         return startCapture(preferredDeviceId, listener, true);
+    }
+
+    public boolean startStreamingMuted(int preferredDeviceId, LevelListener listener) {
+        transmitCapturedAudio = false;
+        return startCapture(preferredDeviceId, listener, true);
+    }
+
+    public void setTransmitCapturedAudio(boolean enabled) {
+        transmitCapturedAudio = enabled;
+    }
+
+    public boolean isLocalCaptureRunning() {
+        return running && streamingToHost && audioRecord != null;
     }
 
     public boolean prepareStreaming() {
@@ -469,6 +484,9 @@ public class MicrophoneCaptureManager {
         short[] readBuffer = new short[bufferSamples];
         short[] hostBuffer = captureSampleRate == SAMPLE_RATE ?
                 null : new short[bufferSamples * Math.max(1, SAMPLE_RATE / captureSampleRate)];
+        short[] mutedHostBuffer = new short[Math.max(
+                FRAME_SIZE,
+                hostBuffer != null ? hostBuffer.length : bufferSamples)];
         int pendingPeak = 0;
         double pendingRms = 0.0;
         long lastUpdateTime = SystemClock.elapsedRealtime();
@@ -513,7 +531,12 @@ public class MicrophoneCaptureManager {
                     pcmToQueue = hostBuffer;
                 }
 
-                int queued = MoonBridge.queueMicrophonePcm(pcmToQueue, samplesToQueue);
+                // For tablet/non-Bluetooth PTT we keep AudioRecord running at all
+                // times and gate only the PCM sent to the host. This avoids opening
+                // the microphone from the controller input path and prevents the
+                // resulting input stall/startup transient when PTT is pressed.
+                short[] queuedPcm = transmitCapturedAudio ? pcmToQueue : mutedHostBuffer;
+                int queued = MoonBridge.queueMicrophonePcm(queuedPcm, samplesToQueue);
                 if (queued < 0) {
                     LimeLog.warning("Failed to queue microphone PCM data for native encoding");
                 }
